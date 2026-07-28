@@ -1,6 +1,6 @@
 # CAD Agent Hub
 
-Windows-focused MCP servers, application bridges, and reproducible modeling examples for AI-assisted CAD workflows.
+Windows-focused MCP servers, application bridges, engineering Skills, and reproducible modeling examples for AI-assisted CAD/CAE workflows.
 
 Chinese documentation: [README.zh-CN.md](README.zh-CN.md)
 
@@ -12,6 +12,7 @@ Chinese documentation: [README.zh-CN.md](README.zh-CN.md)
 | [`MCP/Solidworks`](MCP/Solidworks) | Stateful SolidWorks modeling MCP server |
 | [`MCP/UG`](MCP/UG) | Siemens NX/UG MCP server and in-process bridge |
 | [`fusion_electronics_write_bridge`](fusion_electronics_write_bridge) | Local Fusion Electronics write bridge |
+| [`skills/ansys-structural-workbench`](skills/ansys-structural-workbench) | Quality-gated ANSYS Workbench structural-analysis Skill |
 | [`models`](models) | Reproducible build123d/cadpy model source examples |
 | [`fusion_starship_v3_builder.py`](fusion_starship_v3_builder.py) | Autodesk Fusion parametric modeling example |
 

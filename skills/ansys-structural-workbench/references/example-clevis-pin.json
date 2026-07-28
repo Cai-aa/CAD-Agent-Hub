@@ -1,0 +1,94 @@
+{
+  "schema_version": "1.0",
+  "task_name": "CLEVIS_PIN_DSJ_V1",
+  "analysis_profiles": ["nonlinear_static", "contact"],
+  "model": {
+    "source": "import_cad",
+    "cad_path": "CLEVIS_PIN_DSJ_V1.step",
+    "overwrite": false,
+    "units": {"length": "mm", "force": "N", "stress": "MPa"}
+  },
+  "materials": [
+    {
+      "name": "CLEVIS_LINEAR_ELASTIC",
+      "model": "linear_elastic",
+      "youngs_modulus": 210000,
+      "poissons_ratio": 0.3
+    }
+  ],
+  "connections": [
+    {"name": "CONTACT_PIN_TO_MIDDLE", "type": "frictionless", "formulation": "augmented_lagrange"},
+    {"name": "CONTACT_PIN_TO_OUTER_NEG", "type": "frictionless", "formulation": "augmented_lagrange"},
+    {"name": "CONTACT_PIN_TO_OUTER_POS", "type": "frictionless", "formulation": "augmented_lagrange"}
+  ],
+  "supports": [
+    {"name": "FIXED_SUPPORT_OUTER_NEG", "type": "fixed"},
+    {"name": "FIXED_SUPPORT_OUTER_POS", "type": "fixed"},
+    {"name": "REMOTE_DISPLACEMENT_PIN_NEG_Y_UY_RY_ZERO", "type": "remote_displacement"}
+  ],
+  "loads": [
+    {"name": "FORCE_MIDDLE_POS_X", "type": "force", "step_values": [[1, 3000], [2, 30000]], "unit": "N"}
+  ],
+  "solution": {
+    "number_of_steps": 2,
+    "large_deflection": false,
+    "automatic_time_stepping": true
+  },
+  "mesh": {
+    "profile": "solid_contact",
+    "element_order": "quadratic",
+    "method_policy": {"prefer": ["sweep"], "fallback": "patch_conforming_tetra"},
+    "quality_gates": {
+      "nonpositive_jacobian_count": 0,
+      "zero_or_negative_volume_count": 0,
+      "maximum_skewness": 0.9,
+      "maximum_low_quality_fraction": 0.001
+    },
+    "convergence": {
+      "enabled": true,
+      "levels": [
+        {"name": "M1", "global_size": 5.0, "local_size": 2.5, "contact_size": 2.0},
+        {"name": "M2", "global_size": 4.0, "local_size": 1.6, "contact_size": 1.25},
+        {"name": "M3", "global_size": 3.0, "local_size": 1.0, "contact_size": 0.8}
+      ],
+      "metrics": [
+        {"name": "load_end_average_ux", "tolerance_percent": 3.0},
+        {"name": "total_reaction_x", "tolerance_percent": 1.0}
+      ]
+    }
+  },
+  "validation": {
+    "force_balance_tolerance_percent": 0.5,
+    "symmetry_tolerance_percent": 2.0,
+    "maximum_penetration_mm": 0.1
+  },
+  "outputs": [
+    "mesh_statistics",
+    "initial_contact_information",
+    "reaction_forces",
+    "contact_force",
+    "contact_pressure",
+    "penetration",
+    "equivalent_stress",
+    "load_displacement_curve",
+    "solver_diagnostics",
+    "analysis_report"
+  ],
+  "validation_data": {
+    "solver": {"run_completed": true, "error_count": 0, "final_state": "converged"},
+    "applied_forces": [{"name": "FORCE_MIDDLE_POS_X", "vector": [30000, 0, 0], "unit": "N"}],
+    "reactions": [
+      {"name": "FIXED_SUPPORT_OUTER_NEG", "vector": [-15000.177858, 0, 0], "unit": "N"},
+      {"name": "FIXED_SUPPORT_OUTER_POS", "vector": [-14999.822142, 0, 0], "unit": "N"}
+    ],
+    "validation": {"force_balance_tolerance_percent": 0.5}
+  },
+  "mesh_convergence_data": {
+    "levels": [
+      {"name": "M1", "nodes": 24534, "elements": 14297, "metrics": {"load_end_average_ux": 0.074118}},
+      {"name": "M2", "nodes": 64440, "elements": 40268, "metrics": {"load_end_average_ux": 0.073479}},
+      {"name": "M3", "nodes": 199596, "elements": 132063, "metrics": {"load_end_average_ux": 0.072943}}
+    ],
+    "metrics": [{"name": "load_end_average_ux", "tolerance_percent": 3.0}]
+  }
+}

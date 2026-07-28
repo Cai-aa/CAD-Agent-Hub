@@ -1,6 +1,6 @@
 # CAD Agent Hub
 
-面向 Windows 的 CAD 智能体项目集合，包含 MCP Server、桌面应用桥接和可复现的参数化建模示例。
+面向 Windows 的 CAD/CAE 智能体项目集合，包含 MCP Server、桌面应用桥接、工程 Skill 和可复现的参数化建模示例。
 
 English documentation: [README.md](README.md)
 
@@ -12,6 +12,7 @@ English documentation: [README.md](README.md)
 | [`MCP/Solidworks`](MCP/Solidworks) | 有状态的 SolidWorks 建模 MCP Server |
 | [`MCP/UG`](MCP/UG) | Siemens NX/UG MCP Server 与 NX 内桥接程序 |
 | [`fusion_electronics_write_bridge`](fusion_electronics_write_bridge) | Fusion Electronics 本地写入桥 |
+| [`skills/ansys-structural-workbench`](skills/ansys-structural-workbench) | 带质量门禁的 ANSYS Workbench 结构分析 Skill |
 | [`models`](models) | 可复现的 build123d/cadpy 建模源码示例 |
 | [`fusion_starship_v3_builder.py`](fusion_starship_v3_builder.py) | Autodesk Fusion 参数化建模示例 |
 

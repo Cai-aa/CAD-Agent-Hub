@@ -1,0 +1,4 @@
+interface:
+  display_name: "ANSYS Structural Workbench"
+  short_description: "Plan, mesh, solve, and validate ANSYS structures"
+  default_prompt: "Use $ansys-structural-workbench to run a validated structural analysis through the Workbench MCP."

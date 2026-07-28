@@ -1,0 +1,18 @@
+{
+  "element_count": 132063,
+  "node_count": 199596,
+  "nonpositive_jacobian_count": 0,
+  "zero_or_negative_volume_count": 0,
+  "unmeshed_active_body_count": 0,
+  "invalid_contact_scope_count": 0,
+  "maximum_skewness": 0.86,
+  "worst_skewness_in_critical_region": false,
+  "low_quality_element_fraction": 0.00003,
+  "low_quality_elements_in_critical_region": false,
+  "quality_gates": {
+    "nonpositive_jacobian_count": 0,
+    "zero_or_negative_volume_count": 0,
+    "maximum_skewness": 0.9,
+    "maximum_low_quality_fraction": 0.001
+  }
+}
