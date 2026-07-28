@@ -1,0 +1,61 @@
+{
+  "jobs": [
+    {
+      "input": "models/planetary_gear/planetary_gear_assembly.step",
+      "mode": "view",
+      "outputs": [
+        {
+          "path": "models/planetary_gear/review/assembly_iso.png",
+          "camera": "iso"
+        },
+        {
+          "path": "models/planetary_gear/review/assembly_iso_opposite.png",
+          "camera": {
+            "direction": [-1, 1, -0.8]
+          }
+        },
+        {
+          "path": "models/planetary_gear/review/assembly_top.png",
+          "camera": "top"
+        },
+        {
+          "path": "models/planetary_gear/review/assembly_front.png",
+          "camera": "front"
+        }
+      ],
+      "display": {
+        "mode": "solid",
+        "projection": "orthographic"
+      },
+      "render": {
+        "viewLabels": true,
+        "padding": 0.12,
+        "sizeProfile": "assembly"
+      }
+    },
+    {
+      "input": "models/planetary_gear/planetary_gear_assembly.step",
+      "mode": "view",
+      "outputs": [
+        {
+          "path": "models/planetary_gear/review/assembly_exploded.png",
+          "camera": "iso"
+        }
+      ],
+      "display": {
+        "mode": "solid",
+        "projection": "orthographic",
+        "exploded": {
+          "enabled": true,
+          "axis": "radial",
+          "spacing": 1.4
+        }
+      },
+      "render": {
+        "viewLabels": true,
+        "padding": 0.16,
+        "sizeProfile": "assembly-large"
+      }
+    }
+  ]
+}

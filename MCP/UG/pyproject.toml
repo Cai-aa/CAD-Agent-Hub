@@ -1,0 +1,13 @@
+[project]
+name = "nx-mcp"
+version = "0.1.0"
+description = "MCP server driving a live Siemens NX 2412 session over a socket bridge (Route A)."
+requires-python = ">=3.11"
+dependencies = [
+    "mcp>=1.2.0",
+]
+
+[tool.nx-mcp]
+# The in-NX bridge (nx_mcp_plugin.py) uses only the Python standard library so it
+# runs under NX's embedded Python 3.11 with no extra installs. Only mcp_server.py
+# needs the `mcp` package, in your own Python env.

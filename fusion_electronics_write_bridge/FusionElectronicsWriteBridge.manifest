@@ -1,0 +1,10 @@
+{
+  "autodeskProduct": "Fusion",
+  "type": "addin",
+  "id": "fusion_electronics_write_bridge",
+  "author": "Codex",
+  "description": "Local MCP bridge for Autodesk Fusion Electronics write commands.",
+  "version": "0.2.0",
+  "runOnStartup": false,
+  "supportedOS": "windows|mac"
+}

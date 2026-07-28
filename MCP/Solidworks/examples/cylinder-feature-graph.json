@@ -1,0 +1,20 @@
+{
+  "version": "1.0",
+  "features": [
+    {"name": "CylinderPart", "kind": "new_part"},
+    {
+      "name": "CylinderSketch",
+      "kind": "sketch",
+      "plane": "Front Plane",
+      "entities": [
+        {"kind": "circle", "center": [0, 0], "radius_mm": 25}
+      ]
+    },
+    {
+      "name": "CylinderBoss",
+      "kind": "boss_extrude",
+      "sketch": "CylinderSketch",
+      "depth_mm": 50
+    }
+  ]
+}

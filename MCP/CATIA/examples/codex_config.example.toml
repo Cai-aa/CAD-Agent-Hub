@@ -1,0 +1,19 @@
+[mcp_servers.catia]
+command = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+args = [
+  "-NoProfile",
+  "-ExecutionPolicy",
+  "Bypass",
+  "-File",
+  "C:\\path\\to\\CAD-Agent-Hub\\MCP\\CATIA\\scripts\\run_server.ps1",
+]
+startup_timeout_sec = 30
+tool_timeout_sec = 360
+
+[mcp_servers.catia.env]
+CATIA_MCP_ENV_NAME = "CATIA_P3.V5-6R2023.B33"
+CATIA_MCP_ENV_DIR = "C:\\ProgramData\\DassaultSystemes\\CATEnv"
+CATIA_MCP_WORKSPACE = "C:\\path\\to\\CAD-Agent-Hub\\MCP\\CATIA\\workspace"
+CATIA_MCP_ALLOWED_ROOTS = "C:\\path\\to\\CAD-Agent-Hub\\MCP\\CATIA\\workspace"
+CATIA_MCP_MIN_RELEASE_INDEX = "28"
+CATIA_MCP_VISIBLE = "true"

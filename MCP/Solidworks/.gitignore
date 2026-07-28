@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.env
+artifacts/
+*.sldprt
+*.sldasm
+*.slddrw
+*.step
+*.stp
+*.iges
+*.igs
+*.stl
+*.pdf

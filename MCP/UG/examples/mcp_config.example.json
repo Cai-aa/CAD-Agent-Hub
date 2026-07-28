@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "nx": {
+      "command": "python",
+      "args": ["C:\\path\\to\\CAD-Agent-Hub\\MCP\\UG\\mcp_server.py"],
+      "env": {
+        "NX_MCP_HOST": "127.0.0.1",
+        "NX_MCP_PORT": "48160",
+        "NX_MCP_TIMEOUT": "120"
+      }
+    }
+  }
+}

@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SolidWorks Agent Native Feature Graph",
+  "type": "object",
+  "required": ["version", "features"],
+  "properties": {
+    "version": {"const": "1.0"},
+    "metadata": {"type": "object"},
+    "features": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/feature"}
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "point": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 3,
+      "items": {"type": "number"}
+    },
+    "sketchEntity": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["kind", "start", "end"],
+          "properties": {
+            "kind": {"const": "line"},
+            "start": {"$ref": "#/$defs/point"},
+            "end": {"$ref": "#/$defs/point"},
+            "construction": {"type": "boolean"}
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "radius_mm"],
+          "properties": {
+            "kind": {"const": "circle"},
+            "center": {"$ref": "#/$defs/point"},
+            "radius_mm": {"type": "number", "exclusiveMinimum": 0}
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "center", "start", "end"],
+          "properties": {
+            "kind": {"const": "arc"},
+            "center": {"$ref": "#/$defs/point"},
+            "start": {"$ref": "#/$defs/point"},
+            "end": {"$ref": "#/$defs/point"},
+            "direction": {"enum": [-1, 1]}
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "points"],
+          "properties": {
+            "kind": {"enum": ["spline", "polyline"]},
+            "points": {
+              "type": "array",
+              "minItems": 2,
+              "items": {"$ref": "#/$defs/point"}
+            },
+            "closed": {"type": "boolean"}
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "x_expression", "y_expression", "range_start", "range_end"],
+          "properties": {
+            "kind": {"const": "equation_spline"},
+            "x_expression": {"type": "string", "minLength": 1},
+            "y_expression": {"type": "string", "minLength": 1},
+            "z_expression": {"type": "string"},
+            "range_start": {"type": "string", "minLength": 1},
+            "range_end": {"type": "string", "minLength": 1},
+            "rotation_angle_deg": {"type": "number"},
+            "x_offset_mm": {"type": "number"},
+            "y_offset_mm": {"type": "number"},
+            "lock_start": {"type": "boolean"},
+            "lock_end": {"type": "boolean"},
+            "start": {"$ref": "#/$defs/point"},
+            "end": {"$ref": "#/$defs/point"}
+          }
+        }
+      ]
+    },
+    "selector": {
+      "type": "object",
+      "properties": {
+        "orientation": {"enum": ["any", "axial", "planar"]},
+        "center_mm": {"$ref": "#/$defs/point"},
+        "radius_mm": {"type": "number", "exclusiveMinimum": 0},
+        "radius_tolerance_mm": {"type": "number", "exclusiveMinimum": 0},
+        "tolerance_mm": {"type": "number", "exclusiveMinimum": 0},
+        "z_levels_mm": {"type": "array", "minItems": 1, "items": {"type": "number"}},
+        "expected_count": {"type": "integer", "minimum": 1}
+      },
+      "additionalProperties": false
+    },
+    "feature": {
+      "type": "object",
+      "required": ["name", "kind"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "kind": {
+          "enum": [
+            "new_part", "sketch", "boss_extrude", "boss_revolve", "cut_extrude",
+            "reference_axis", "circular_pattern", "fillet", "chamfer", "extrude"
+          ]
+        },
+        "title": {"type": "string"},
+        "plane": {"type": "string"},
+        "entities": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/sketchEntity"}},
+        "sketch": {"type": "string"},
+        "depth_mm": {"type": "number", "exclusiveMinimum": 0},
+        "through_all": {"type": "boolean"},
+        "merge": {"type": "boolean"},
+        "planes": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "string"}},
+        "feature": {"type": "string"},
+        "axis": {"type": "string"},
+        "axis_segment": {"type": "string", "minLength": 1},
+        "count": {"type": "integer", "minimum": 2},
+        "total_angle_deg": {"type": "number", "exclusiveMinimum": 0},
+        "geometry_pattern": {"type": "boolean"},
+        "radius_mm": {"type": "number", "exclusiveMinimum": 0},
+        "distance_mm": {"type": "number", "exclusiveMinimum": 0},
+        "angle_deg": {"type": "number", "exclusiveMinimum": 0},
+        "selector": {"$ref": "#/$defs/selector"},
+        "profile": {"enum": ["circle", "rectangle"]}
+      },
+      "additionalProperties": true
+    }
+  }
+}
