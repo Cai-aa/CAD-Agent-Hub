@@ -64,9 +64,14 @@ transitions while custom late types remain available.
 - Starting CATIA is opt-in through `catia_connect(start_if_missing=true)`.
 - A compute timeout does not kill CATIA; the STA call may still finish. Check operation status before retrying.
 
-## Known limitations of the first release
+## Known limitations
 
-- Only line, circle, rectangle and polyline sketch primitives are currently exposed. The architecture can add constraints, arcs, splines and more Part Design features without changing the version strategy.
+- Sketcher remains limited to line, circle, rectangle and polyline primitives. Native
+  3D HybridShapeSpline, offset planes, connect curves, lofts, joins, healing, boundaries
+  and surface-to-solid operations are exposed separately through the GSD layer.
+- V5 Automation does not expose queryable results for the interactive curvature-comb
+  display or interactive self-intersection diagnostic. The quality tool reports this
+  boundary explicitly and does not fabricate a pass.
 - CATIA Analysis entity component labels and late types vary by module. Use `catia_analysis_catalog`, create the entity, inspect returned basic components and then set values.
 - Selection-based support binding depends on CATIA Search syntax and stable source geometry. Publications are preferable for production models.
 - `Compute` success must be followed by mesh/result/report validation; no solver result is fabricated.

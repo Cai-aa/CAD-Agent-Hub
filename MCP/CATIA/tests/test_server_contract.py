@@ -19,9 +19,22 @@ class ServerContractTests(unittest.TestCase):
             "catia_run_analysis_transition",
             "catia_compute_analysis",
             "catia_build_analysis_report",
+            "catia_surface_capabilities",
+            "catia_create_3d_points",
+            "catia_create_spline",
+            "catia_create_offset_plane",
+            "catia_create_connect_curve",
+            "catia_create_loft",
+            "catia_create_fill",
+            "catia_join_surfaces",
+            "catia_heal_surfaces",
+            "catia_create_boundary",
+            "catia_close_surface",
+            "catia_thick_surface",
+            "catia_check_surface_quality",
         }
         self.assertTrue(required.issubset(tools))
-        self.assertGreaterEqual(len(tools), 35)
+        self.assertGreaterEqual(len(tools), 53)
 
 
 if __name__ == "__main__":

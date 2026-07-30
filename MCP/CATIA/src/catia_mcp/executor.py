@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable
 
-from . import modeling, simulation
+from . import modeling, simulation, surfaces
 from .compatibility import environment_report
 from .config import Settings
 from .contracts import ContractError, resolve_within
@@ -91,6 +91,108 @@ class CatiaExecutor:
         body_name: str,
     ) -> dict[str, Any]:
         return self._run(request_id, lambda app: modeling.create_sketch(app, name, plane, entities, body_name))
+
+    def surface_capabilities(self, request_id: str) -> dict[str, Any]:
+        return self._run(request_id, surfaces.surface_capabilities, mutating=False)
+
+    def create_geometrical_set(self, request_id: str, name: str) -> dict[str, Any]:
+        return self._run(request_id, lambda app: surfaces.create_geometrical_set(app, name))
+
+    def create_3d_points(
+        self,
+        request_id: str,
+        points: list[dict[str, Any]],
+        geometrical_set: str,
+    ) -> dict[str, Any]:
+        return self._run(
+            request_id,
+            lambda app: surfaces.create_3d_points(app, points, geometrical_set),
+        )
+
+    def create_spline(
+        self,
+        request_id: str,
+        name: str,
+        point_names: list[str],
+        closed: bool,
+        constraints: list[dict[str, Any]] | None,
+        geometrical_set: str,
+    ) -> dict[str, Any]:
+        return self._run(
+            request_id,
+            lambda app: surfaces.create_spline(
+                app, name, point_names, closed, constraints, geometrical_set
+            ),
+        )
+
+    def create_offset_plane(
+        self,
+        request_id: str,
+        name: str,
+        base_plane: str,
+        offset_mm: float,
+        orientation: bool,
+        geometrical_set: str,
+    ) -> dict[str, Any]:
+        return self._run(
+            request_id,
+            lambda app: surfaces.create_offset_plane(
+                app, name, base_plane, offset_mm, orientation, geometrical_set
+            ),
+        )
+
+    def create_connect_curve(self, request_id: str, **kwargs: Any) -> dict[str, Any]:
+        return self._run(request_id, lambda app: surfaces.create_connect_curve(app, **kwargs))
+
+    def create_loft(self, request_id: str, **kwargs: Any) -> dict[str, Any]:
+        return self._run(request_id, lambda app: surfaces.create_loft(app, **kwargs))
+
+    def create_fill(self, request_id: str, **kwargs: Any) -> dict[str, Any]:
+        return self._run(request_id, lambda app: surfaces.create_fill(app, **kwargs))
+
+    def join_surfaces(self, request_id: str, **kwargs: Any) -> dict[str, Any]:
+        return self._run(request_id, lambda app: surfaces.join_surfaces(app, **kwargs))
+
+    def heal_surfaces(self, request_id: str, **kwargs: Any) -> dict[str, Any]:
+        return self._run(request_id, lambda app: surfaces.heal_surfaces(app, **kwargs))
+
+    def create_boundary(
+        self,
+        request_id: str,
+        name: str,
+        surface_name: str,
+        geometrical_set: str,
+    ) -> dict[str, Any]:
+        return self._run(
+            request_id,
+            lambda app: surfaces.create_boundary(app, name, surface_name, geometrical_set),
+        )
+
+    def close_surface(
+        self,
+        request_id: str,
+        name: str,
+        surface_name: str,
+        body_name: str,
+    ) -> dict[str, Any]:
+        return self._run(
+            request_id,
+            lambda app: surfaces.close_surface(app, name, surface_name, body_name),
+        )
+
+    def thick_surface(self, request_id: str, **kwargs: Any) -> dict[str, Any]:
+        return self._run(request_id, lambda app: surfaces.thick_surface(app, **kwargs))
+
+    def check_surface_quality(
+        self,
+        request_id: str,
+        element_names: list[str],
+        gap_pairs: list[list[str]] | None,
+    ) -> dict[str, Any]:
+        return self._run(
+            request_id,
+            lambda app: surfaces.check_surface_quality(app, element_names, gap_pairs),
+        )
 
     def add_pad(self, request_id: str, sketch_name: str, length_mm: float, name: str, body_name: str) -> dict[str, Any]:
         return self._run(request_id, lambda app: modeling.add_pad(app, sketch_name, length_mm, name, body_name))

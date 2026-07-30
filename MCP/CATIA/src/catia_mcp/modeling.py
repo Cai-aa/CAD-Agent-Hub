@@ -501,8 +501,32 @@ def inspect_active(app: Any, include_parameters: bool = False, limit: int = 200)
                 for item in _collection_items(body.Shapes, limit)
             ]
             bodies.append({"name": body.Name, "sketches": sketches, "shapes": shapes})
+
+        def inspect_hybrid_body(hybrid_body: Any) -> dict[str, Any]:
+            shapes = [
+                {
+                    "name": str(_safe_attr(item, "Name", "")),
+                    "type": str(_safe_attr(item, "Type", type(item).__name__)),
+                }
+                for item in _collection_items(hybrid_body.HybridShapes, limit)
+            ]
+            children = [
+                inspect_hybrid_body(item)
+                for item in _collection_items(hybrid_body.HybridBodies, limit)
+            ]
+            return {
+                "name": str(_safe_attr(hybrid_body, "Name", "")),
+                "shapes": shapes,
+                "children": children,
+            }
+
+        hybrid_bodies = [
+            inspect_hybrid_body(item)
+            for item in _collection_items(part.HybridBodies, limit)
+        ]
         result["part_number"] = str(_safe_attr(part, "PartNumber", ""))
         result["bodies"] = bodies
+        result["hybrid_bodies"] = hybrid_bodies
         if include_parameters:
             result["parameter_inventory"] = list_parameters(app, limit)
     elif hasattr(document, "Product"):

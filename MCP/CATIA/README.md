@@ -7,9 +7,12 @@ Chinese documentation: [README.zh-CN.md](README.zh-CN.md)
 ## Current scope
 
 - Native CATPart sketch, pad, pocket, parameters, materials, update, save, export and inspection.
+- Native GSD wireframe/surface creation: 3D points, closed/open splines, offset planes,
+  G0/G1/G2 connect curves, HybridShapeLoft sections/guides/coupling/closing points,
+  Join, Healing, Boundary, Close Surface and Thick Surface.
 - Native CATProduct creation and component insertion.
 - Native CATAnalysis creation/import, cases, solutions, sets, entities, supports, mesh parts, mesh specifications, internal compute, result images/data and HTML reports.
-- 39 fixed, typed MCP tools. Arbitrary Python, CATScript, shell and raw COM execution are intentionally not exposed.
+- 53 fixed, typed MCP tools. Arbitrary Python, CATScript, shell and raw COM execution are intentionally not exposed.
 - Dedicated STA worker, serialized COM calls, request-id idempotency and bounded filesystem roots.
 
 The local validation target is CATIA P3 V5-6R2023 B33 at `G:\Program Files\Dassault Systemes\B33`. The implementation discovers installed V5 environments instead of hard-coding that location.
@@ -29,7 +32,7 @@ Installed DLLs do not prove that a workbench licence is available. `catia_create
 The checked startup wrapper selects `CATIA_MCP_PYTHON`, a local `.venv`, or the available Codex Python runtime without writing logs to STDIO:
 
 ```powershell
-& 'C:\path\to\CAD-Agent-Hub\MCP\CATIA\scripts\run_server.ps1'
+& '.\scripts\run_server.ps1'
 ```
 
 Copy [examples/codex_config.example.toml](examples/codex_config.example.toml) into the appropriate Codex config. Adjust `CATIA_MCP_ENV_NAME` for another installed release.
@@ -39,14 +42,12 @@ CATIA and the MCP process must run as the same Windows user and at the same inte
 ## Validation
 
 ```powershell
-$repo = 'C:\path\to\CAD-Agent-Hub'
-$env:PYTHONPATH = Join-Path $repo 'MCP\CATIA\src'
-$python = 'python'
-& $python -m unittest discover -s (Join-Path $repo 'MCP\CATIA\tests') -v
-& $python -m compileall -q (Join-Path $repo 'MCP\CATIA\src')
-& $python (Join-Path $repo 'MCP\CATIA\scripts\stdio_smoke.py')
-& $python (Join-Path $repo 'MCP\CATIA\scripts\probe_environment.py')
-& $python (Join-Path $repo 'MCP\CATIA\scripts\probe_live.py')
+$env:PYTHONPATH=(Resolve-Path '.\src').Path
+python -m unittest discover -s '.\tests' -v
+python -m compileall -q '.\src'
+python '.\scripts\stdio_smoke.py'
+python '.\scripts\probe_environment.py'
+python '.\scripts\probe_live.py'
 ```
 
 Use `probe_live.py --start-if-missing` only when starting the selected CATIA environment is intended.
@@ -60,4 +61,5 @@ Use `probe_live.py --start-if-missing` only when starting the selected CATIA env
 5. For simulation, inspect the imported Analysis tree before creating loads, restraints or mesh definitions.
 6. After `catia_compute_analysis`, verify mesh parts, result images, exported numerical data and the native report. A returned COM call alone is not proof of correct physics.
 
-See [docs/compatibility-and-architecture.md](docs/compatibility-and-architecture.md) for the capability model and limitations.
+See [docs/advanced-surfaces.md](docs/advanced-surfaces.md) for the GSD tool contracts and
+[docs/compatibility-and-architecture.md](docs/compatibility-and-architecture.md) for the capability model and limitations.

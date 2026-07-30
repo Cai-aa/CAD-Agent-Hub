@@ -109,6 +109,314 @@ def catia_create_sketch(
 
 
 @mcp.tool()
+def catia_surface_capabilities(request_id: str | None = None) -> dict[str, Any]:
+    """Probe live CATIA GSD/Part Design surface factories and documented quality-check limits."""
+    return _result(
+        "surface_capabilities",
+        lambda: executor.surface_capabilities(_request_id(request_id)),
+    )
+
+
+@mcp.tool()
+def catia_create_geometrical_set(
+    name: str,
+    request_id: str | None = None,
+) -> dict[str, Any]:
+    """Create or reuse a native CATIA geometrical set (HybridBody)."""
+    return _result(
+        "create_geometrical_set",
+        lambda: executor.create_geometrical_set(_request_id(request_id), name),
+    )
+
+
+@mcp.tool()
+def catia_create_3d_points(
+    points: list[dict[str, Any]],
+    geometrical_set: str = "Wireframe",
+    request_id: str | None = None,
+) -> dict[str, Any]:
+    """Create named native 3D coordinate points in a geometrical set; coordinates are millimetres."""
+    return _result(
+        "create_3d_points",
+        lambda: executor.create_3d_points(_request_id(request_id), points, geometrical_set),
+    )
+
+
+@mcp.tool()
+def catia_create_spline(
+    name: str,
+    point_names: list[str],
+    closed: bool = False,
+    constraints: list[dict[str, Any]] | None = None,
+    geometrical_set: str = "Wireframe",
+    request_id: str | None = None,
+) -> dict[str, Any]:
+    """Create an open/closed 3D spline through named points with optional G1/G2 curve constraints."""
+    return _result(
+        "create_spline",
+        lambda: executor.create_spline(
+            _request_id(request_id),
+            name,
+            point_names,
+            closed,
+            constraints,
+            geometrical_set,
+        ),
+    )
+
+
+@mcp.tool()
+def catia_create_offset_plane(
+    name: str,
+    base_plane: str,
+    offset_mm: float,
+    orientation: bool = False,
+    geometrical_set: str = "Reference Geometry",
+    request_id: str | None = None,
+) -> dict[str, Any]:
+    """Create a native offset plane from XY/YZ/ZX or another named plane."""
+    return _result(
+        "create_offset_plane",
+        lambda: executor.create_offset_plane(
+            _request_id(request_id),
+            name,
+            base_plane,
+            offset_mm,
+            orientation,
+            geometrical_set,
+        ),
+    )
+
+
+@mcp.tool()
+def catia_create_connect_curve(
+    name: str,
+    curve1_name: str,
+    point1_name: str,
+    curve2_name: str,
+    point2_name: str,
+    continuity1: str = "g1",
+    continuity2: str = "g1",
+    tension1: float = 1.0,
+    tension2: float = 1.0,
+    orientation1: int = 1,
+    orientation2: int = 1,
+    trim: bool = False,
+    geometrical_set: str = "Wireframe",
+    request_id: str | None = None,
+) -> dict[str, Any]:
+    """Create a native connect curve with independently selectable G0/G1/G2 end continuity."""
+    kwargs = dict(
+        name=name,
+        curve1_name=curve1_name,
+        point1_name=point1_name,
+        curve2_name=curve2_name,
+        point2_name=point2_name,
+        continuity1=continuity1,
+        continuity2=continuity2,
+        tension1=tension1,
+        tension2=tension2,
+        orientation1=orientation1,
+        orientation2=orientation2,
+        trim=trim,
+        geometrical_set=geometrical_set,
+    )
+    return _result(
+        "create_connect_curve",
+        lambda: executor.create_connect_curve(_request_id(request_id), **kwargs),
+    )
+
+
+@mcp.tool()
+def catia_create_loft(
+    name: str,
+    section_names: list[str],
+    guide_names: list[str] | None = None,
+    closing_point_names: list[str] | None = None,
+    section_orientations: list[int] | None = None,
+    coupling: str = "ratio",
+    context: str = "surface",
+    start_tangent_name: str | None = None,
+    end_tangent_name: str | None = None,
+    smooth_angle_deg: float | None = None,
+    smooth_deviation_mm: float | None = None,
+    geometrical_set: str = "Surfaces",
+    request_id: str | None = None,
+) -> dict[str, Any]:
+    """Create native HybridShapeLoft with ordered sections, guides, coupling and closing points."""
+    kwargs = dict(
+        name=name,
+        section_names=section_names,
+        guide_names=guide_names,
+        closing_point_names=closing_point_names,
+        section_orientations=section_orientations,
+        coupling=coupling,
+        context=context,
+        start_tangent_name=start_tangent_name,
+        end_tangent_name=end_tangent_name,
+        smooth_angle_deg=smooth_angle_deg,
+        smooth_deviation_mm=smooth_deviation_mm,
+        geometrical_set=geometrical_set,
+    )
+    return _result("create_loft", lambda: executor.create_loft(_request_id(request_id), **kwargs))
+
+
+@mcp.tool()
+def catia_create_fill(
+    name: str,
+    boundary_names: list[str],
+    support_names: list[str | None] | None = None,
+    continuities: list[str] | None = None,
+    constraints: list[str] | None = None,
+    geometrical_set: str = "Surfaces",
+    request_id: str | None = None,
+) -> dict[str, Any]:
+    """Create a native Fill with one or more boundaries and optional G0/G1/G2 supports."""
+    kwargs = dict(
+        name=name,
+        boundary_names=boundary_names,
+        support_names=support_names,
+        continuities=continuities,
+        constraints=constraints,
+        geometrical_set=geometrical_set,
+    )
+    return _result(
+        "create_fill",
+        lambda: executor.create_fill(_request_id(request_id), **kwargs),
+    )
+
+
+@mcp.tool()
+def catia_join_surfaces(
+    name: str,
+    element_names: list[str],
+    tolerance_mm: float = 0.001,
+    angular_tolerance_deg: float = 0.5,
+    connex: bool = True,
+    manifold: bool = True,
+    simplify: bool = True,
+    geometrical_set: str = "Surfaces",
+    request_id: str | None = None,
+) -> dict[str, Any]:
+    """Join native curves/surfaces with distance, angular, connexity and manifold controls."""
+    kwargs = dict(
+        name=name,
+        element_names=element_names,
+        tolerance_mm=tolerance_mm,
+        angular_tolerance_deg=angular_tolerance_deg,
+        connex=connex,
+        manifold=manifold,
+        simplify=simplify,
+        geometrical_set=geometrical_set,
+    )
+    return _result(
+        "join_surfaces",
+        lambda: executor.join_surfaces(_request_id(request_id), **kwargs),
+    )
+
+
+@mcp.tool()
+def catia_heal_surfaces(
+    name: str,
+    body_names: list[str],
+    continuity: str = "g1",
+    distance_objective_mm: float = 0.001,
+    merging_distance_mm: float = 0.001,
+    tangency_angle_deg: float = 0.5,
+    sharpness_angle_deg: float = 0.5,
+    geometrical_set: str = "Surfaces",
+    request_id: str | None = None,
+) -> dict[str, Any]:
+    """Heal native surfaces with G0/G1, distance, merging and angular objectives."""
+    kwargs = dict(
+        name=name,
+        body_names=body_names,
+        continuity=continuity,
+        distance_objective_mm=distance_objective_mm,
+        merging_distance_mm=merging_distance_mm,
+        tangency_angle_deg=tangency_angle_deg,
+        sharpness_angle_deg=sharpness_angle_deg,
+        geometrical_set=geometrical_set,
+    )
+    return _result(
+        "heal_surfaces",
+        lambda: executor.heal_surfaces(_request_id(request_id), **kwargs),
+    )
+
+
+@mcp.tool()
+def catia_create_boundary(
+    name: str,
+    surface_name: str,
+    geometrical_set: str = "Wireframe",
+    request_id: str | None = None,
+) -> dict[str, Any]:
+    """Create the complete boundary curve of a named surface."""
+    return _result(
+        "create_boundary",
+        lambda: executor.create_boundary(
+            _request_id(request_id), name, surface_name, geometrical_set
+        ),
+    )
+
+
+@mcp.tool()
+def catia_close_surface(
+    name: str,
+    surface_name: str,
+    body_name: str = "PartBody",
+    request_id: str | None = None,
+) -> dict[str, Any]:
+    """Close a named surface into a native Part Design solid feature."""
+    return _result(
+        "close_surface",
+        lambda: executor.close_surface(
+            _request_id(request_id), name, surface_name, body_name
+        ),
+    )
+
+
+@mcp.tool()
+def catia_thick_surface(
+    name: str,
+    surface_name: str,
+    top_offset_mm: float,
+    bottom_offset_mm: float = 0.0,
+    reverse_direction: bool = False,
+    body_name: str = "PartBody",
+    request_id: str | None = None,
+) -> dict[str, Any]:
+    """Thicken a named surface into a native Part Design solid feature."""
+    kwargs = dict(
+        name=name,
+        surface_name=surface_name,
+        top_offset_mm=top_offset_mm,
+        bottom_offset_mm=bottom_offset_mm,
+        reverse_direction=reverse_direction,
+        body_name=body_name,
+    )
+    return _result(
+        "thick_surface",
+        lambda: executor.thick_surface(_request_id(request_id), **kwargs),
+    )
+
+
+@mcp.tool()
+def catia_check_surface_quality(
+    element_names: list[str],
+    gap_pairs: list[list[str]] | None = None,
+    request_id: str | None = None,
+) -> dict[str, Any]:
+    """Update and measure named surfaces, report Join topology modes and requested minimum gaps."""
+    return _result(
+        "check_surface_quality",
+        lambda: executor.check_surface_quality(
+            _request_id(request_id), element_names, gap_pairs
+        ),
+    )
+
+
+@mcp.tool()
 def catia_add_pad(
     sketch_name: str,
     length_mm: float,

@@ -13,7 +13,9 @@ from mcp.client.stdio import stdio_client
 async def run(use_wrapper: bool = False) -> None:
     project = Path(__file__).resolve().parents[1]
     environment = dict(os.environ)
-    environment["PYTHONPATH"] = str(project / "src")
+    environment["PYTHONPATH"] = os.pathsep.join(
+        part for part in (str(project / "src"), environment.get("PYTHONPATH")) if part
+    )
     command = sys.executable
     arguments = ["-m", "catia_mcp.server"]
     if use_wrapper:

@@ -1,5 +1,8 @@
 # CATIA Agent MCP
 
+高级线框与曲面接口说明：
+[docs/advanced-surfaces.zh-CN.md](docs/advanced-surfaces.zh-CN.md)。
+
 这是一个 Windows 本地 STDIO MCP Server，用于让 Codex/AI Agent 控制 CATIA V5 的原生建模和 CATIA 内部 Analysis/ELFINI 仿真。它不会调用 Abaqus、ANSYS、CalculiX 或其他第三方求解器。
 
 ## 已实现范围
@@ -7,7 +10,10 @@
 - CATPart：草图、Pad、Pocket、参数、材料、更新、保存、导出和模型树检查。
 - CATProduct：新建装配体、插入零部件和装配结构检查。
 - CATAnalysis：导入零件/装配、工况、Solution、Analysis Set、载荷/约束实体、支撑绑定、Mesh Part、网格规格、CATIA 内部计算、结果图像/数据和 HTML 报告。
-- 共 39 个固定、带类型的 MCP 工具。
+- 原生 GSD 线框/曲面：三维点、开闭 Spline、偏置平面、G0/G1/G2 Connect、
+  HybridShapeLoft 截面/引导线/耦合/闭合点、Join、Healing、Boundary、
+  Close Surface 和 Thick Surface。
+- 共 53 个固定、带类型的 MCP 工具。
 - 不开放任意 Python、CATScript、Shell 或任意 COM 方法执行。
 - CATIA COM 调用集中到单个 STA 工作线程，支持请求 ID 幂等、忙碌拒绝和文件根目录边界。
 
@@ -28,7 +34,7 @@
 当前机器可直接使用：
 
 ```powershell
-& 'C:\path\to\CAD-Agent-Hub\MCP\CATIA\scripts\run_server.ps1'
+& '.\scripts\run_server.ps1'
 ```
 
 Codex 配置示例位于 [examples/codex_config.example.toml](examples/codex_config.example.toml)。安装其他 CATIA 版本时，将 `CATIA_MCP_ENV_NAME` 改为对应 CATEnv 文件名即可，例如：
@@ -84,14 +90,12 @@ CATIA 内部仿真：
 ## 本地验证命令
 
 ```powershell
-$repo = 'C:\path\to\CAD-Agent-Hub'
-$env:PYTHONPATH = Join-Path $repo 'MCP\CATIA\src'
-$python = 'python'
-& $python -m unittest discover -s (Join-Path $repo 'MCP\CATIA\tests') -v
-& $python -m compileall -q (Join-Path $repo 'MCP\CATIA\src')
-& $python (Join-Path $repo 'MCP\CATIA\scripts\stdio_smoke.py')
-& $python (Join-Path $repo 'MCP\CATIA\scripts\probe_environment.py')
-& $python (Join-Path $repo 'MCP\CATIA\scripts\probe_live.py')
+$env:PYTHONPATH=(Resolve-Path '.\src').Path
+python -m unittest discover -s '.\tests' -v
+python -m compileall -q '.\src'
+python '.\scripts\stdio_smoke.py'
+python '.\scripts\probe_environment.py'
+python '.\scripts\probe_live.py'
 ```
 
 详细兼容性和架构说明见 [docs/compatibility-and-architecture.md](docs/compatibility-and-architecture.md)。
