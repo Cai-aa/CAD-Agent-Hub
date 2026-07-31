@@ -3,6 +3,9 @@
 高级线框与曲面接口说明：
 [docs/advanced-surfaces.zh-CN.md](docs/advanced-surfaces.zh-CN.md)。
 
+防覆盖、临时文件验证和超时恢复：
+[docs/safe-export.zh-CN.md](docs/safe-export.zh-CN.md)。
+
 这是一个 Windows 本地 STDIO MCP Server，用于让 Codex/AI Agent 控制 CATIA V5 的原生建模和 CATIA 内部 Analysis/ELFINI 仿真。它不会调用 Abaqus、ANSYS、CalculiX 或其他第三方求解器。
 
 ## 已实现范围
@@ -58,6 +61,10 @@ CATIA 与 MCP 必须在相同 Windows 用户和相同权限级别下运行。如
 - `catia_list_parameters`、`catia_set_parameter`
 - `catia_update_active`、`catia_inspect_active`
 - `catia_save_active`、`catia_export_active`、`catia_capture_view`
+
+`catia_export_active` 默认 `overwrite_policy="error"`。目标已存在时不会进入
+CATIA，也不会弹出覆盖窗口。需要保留版本时使用 `versioned`；需要替换时使用
+`replace`，工具会先导出并回读验证唯一临时文件，再执行文件系统替换。
 
 CATIA 内部仿真：
 

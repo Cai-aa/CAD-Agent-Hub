@@ -4,6 +4,9 @@ A Windows STDIO MCP server for AI-agent control of CATIA V5 modeling and native 
 
 Chinese documentation: [README.zh-CN.md](README.zh-CN.md)
 
+Safe overwrite, temporary validation and timeout recovery:
+[docs/safe-export.md](docs/safe-export.md).
+
 ## Current scope
 
 - Native CATPart sketch, pad, pocket, parameters, materials, update, save, export and inspection.
@@ -58,8 +61,11 @@ Use `probe_live.py --start-if-missing` only when starting the selected CATIA env
 2. `catia_connect`
 3. Build in small native steps and call `catia_inspect_active` after updates.
 4. Save only under `CATIA_MCP_ALLOWED_ROOTS`.
-5. For simulation, inspect the imported Analysis tree before creating loads, restraints or mesh definitions.
-6. After `catia_compute_analysis`, verify mesh parts, result images, exported numerical data and the native report. A returned COM call alone is not proof of correct physics.
+5. Export with the default `overwrite_policy="error"`. Use `versioned` or
+   `replace` only when explicitly intended; exports are staged through a unique
+   temporary file and STEP/IGES is re-imported by default.
+6. For simulation, inspect the imported Analysis tree before creating loads, restraints or mesh definitions.
+7. After `catia_compute_analysis`, verify mesh parts, result images, exported numerical data and the native report. A returned COM call alone is not proof of correct physics.
 
 See [docs/advanced-surfaces.md](docs/advanced-surfaces.md) for the GSD tool contracts and
 [docs/compatibility-and-architecture.md](docs/compatibility-and-architecture.md) for the capability model and limitations.

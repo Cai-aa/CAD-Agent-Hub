@@ -36,6 +36,12 @@ class ServerContractTests(unittest.TestCase):
         self.assertTrue(required.issubset(tools))
         self.assertGreaterEqual(len(tools), 53)
 
+    def test_export_tool_defaults_to_non_overwriting_policy(self) -> None:
+        schema = mcp._tool_manager._tools["catia_export_active"].parameters
+        properties = schema["properties"]
+        self.assertEqual(properties["overwrite_policy"]["default"], "error")
+        self.assertTrue(properties["verify_reimport"]["default"])
+
 
 if __name__ == "__main__":
     unittest.main()

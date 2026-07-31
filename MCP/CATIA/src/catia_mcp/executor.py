@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable
 
+from . import __version__
 from . import modeling, simulation, surfaces
 from .compatibility import environment_report
 from .config import Settings
@@ -34,7 +35,7 @@ class CatiaExecutor:
 
     def health_check(self) -> dict[str, Any]:
         return {
-            "server_version": "0.1.0",
+            "server_version": __version__,
             "workspace": str(self.settings.workspace.resolve(strict=False)),
             "allowed_roots": [str(path.resolve(strict=False)) for path in self.settings.allowed_roots],
             "session": self.session.status(),
@@ -78,9 +79,25 @@ class CatiaExecutor:
         target = self._write_path(path) if path else None
         return self._run(request_id, lambda app: modeling.save_active(app, target))
 
-    def export_active(self, request_id: str, path: str, format_name: str | None) -> dict[str, Any]:
+    def export_active(
+        self,
+        request_id: str,
+        path: str,
+        format_name: str | None,
+        overwrite_policy: str,
+        verify_reimport: bool,
+    ) -> dict[str, Any]:
         target = self._write_path(path)
-        return self._run(request_id, lambda app: modeling.export_active(app, target, format_name))
+        return self._run(
+            request_id,
+            lambda app: modeling.export_active(
+                app,
+                target,
+                format_name,
+                overwrite_policy,
+                verify_reimport,
+            ),
+        )
 
     def create_sketch(
         self,

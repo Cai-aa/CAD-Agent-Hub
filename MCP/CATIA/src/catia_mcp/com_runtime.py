@@ -70,18 +70,25 @@ class StaExecutor:
 
     def call(self, function: Callable[[], Any], timeout: float, *, reject_if_busy: bool = False) -> Any:
         if reject_if_busy and (self._busy.is_set() or not self._queue.empty()):
-            raise RuntimeError("CATIA is still processing the previous COM operation")
+            raise RuntimeError(
+                "CATIA is still processing the previous COM operation. "
+                "Do not retry or queue another export; call catia_operation_status "
+                "and inspect the target path before deciding the next action."
+            )
         future: Future[Any] = Future()
         self._queue.put(_Request(function, future))
         return future.result(timeout=timeout)
 
     def status(self) -> dict[str, Any]:
         elapsed = None if self._active_started_at is None else time.monotonic() - self._active_started_at
+        busy = self._busy.is_set()
+        queued_requests = self._queue.qsize()
         return {
-            "busy": self._busy.is_set(),
+            "busy": busy,
             "active_elapsed_seconds": elapsed,
-            "queued_requests": self._queue.qsize(),
+            "queued_requests": queued_requests,
             "worker_alive": self._thread.is_alive(),
+            "retry_allowed": not busy and queued_requests == 0,
         }
 
     def close(self, timeout: float = 5.0) -> None:
@@ -96,6 +103,7 @@ class CatiaSession:
         self._application: Any | None = None
         self._state_version = 0
         self._completed: OrderedDict[str, dict[str, Any]] = OrderedDict()
+        self._last_timeout: dict[str, Any] | None = None
 
     @staticmethod
     def _get_active() -> Any:
@@ -245,15 +253,26 @@ class CatiaSession:
             return envelope
 
         try:
-            return self._sta.call(
+            result = self._sta.call(
                 invoke,
                 timeout=self.settings.operation_timeout_seconds,
                 reject_if_busy=True,
             )
+            self._last_timeout = None
+            return result
         except TimeoutError as exc:
+            self._last_timeout = {
+                "request_id": request_id,
+                "at_unix_seconds": time.time(),
+                "instruction": (
+                    "Do not retry until retry_allowed is true; inspect the target "
+                    "path before starting another export."
+                ),
+            }
             raise TimeoutError(
                 f"CATIA operation exceeded {self.settings.operation_timeout_seconds:g} seconds. "
-                "The serialized COM call may still be completing inside CATIA."
+                "The serialized COM call may still be completing inside CATIA. "
+                "Do not retry; call catia_operation_status and inspect the target path first."
             ) from exc
 
     def status(self) -> dict[str, Any]:
@@ -262,6 +281,7 @@ class CatiaSession:
             "connected": self._application is not None,
             "state_version": self._state_version,
             "completed_request_cache_size": len(self._completed),
+            "last_timeout": self._last_timeout,
         }
 
     def close(self) -> None:

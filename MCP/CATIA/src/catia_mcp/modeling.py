@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import math
+import os
+import threading
+import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -157,21 +161,198 @@ _EXPORT_FORMATS = {
     ".dwg": "dwg",
 }
 
+_EXPORT_POLICIES = ("error", "versioned", "replace")
+_REIMPORT_FORMATS = {"stp", "igs"}
+_EXPORT_GUARD = threading.Lock()
+_ACTIVE_EXPORTS: set[str] = set()
 
-def export_active(app: Any, path: Path, format_name: str | None = None) -> dict[str, Any]:
+
+def _export_key(document: Any) -> str:
+    full_name = str(_safe_attr(document, "FullName", "")).strip()
+    return full_name.casefold() if full_name else str(document.Name).casefold()
+
+
+def _reserve_export(document: Any) -> str:
+    key = _export_key(document)
+    with _EXPORT_GUARD:
+        if key in _ACTIVE_EXPORTS:
+            raise RuntimeError(
+                f"an export is already active for {document.Name}; "
+                "call catia_operation_status and do not retry until it is idle"
+            )
+        _ACTIVE_EXPORTS.add(key)
+    return key
+
+
+def _release_export(key: str) -> None:
+    with _EXPORT_GUARD:
+        _ACTIVE_EXPORTS.discard(key)
+
+
+def _unique_export_path(path: Path, marker: str) -> Path:
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    for index in range(1000):
+        suffix = "" if index == 0 else f"_{index:03d}"
+        candidate = path.with_name(
+            f"{path.stem}.{marker}_{timestamp}{suffix}{path.suffix}"
+        )
+        if not candidate.exists():
+            return candidate
+    raise RuntimeError(f"could not allocate a unique export path beside {path}")
+
+
+def _temporary_export_path(path: Path) -> Path:
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    token = uuid.uuid4().hex[:8]
+    return path.with_name(
+        f"{path.stem}.__exporting_{timestamp}_{token}{path.suffix}"
+    )
+
+
+def _validate_export_file(path: Path) -> dict[str, Any]:
+    if not path.is_file():
+        raise RuntimeError(f"CATIA export did not create a file: {path}")
+    size_bytes = path.stat().st_size
+    if size_bytes <= 0:
+        raise RuntimeError(f"CATIA export created an empty file: {path}")
+    return {"exists": True, "size_bytes": size_bytes}
+
+
+def _validate_export_reimport(
+    app: Any,
+    original_document: Any,
+    path: Path,
+    resolved_format: str,
+    verify_reimport: bool,
+) -> dict[str, Any]:
+    if not verify_reimport or resolved_format not in _REIMPORT_FORMATS:
+        return {
+            "performed": False,
+            "reason": (
+                "disabled"
+                if not verify_reimport
+                else f"re-import is not configured for {resolved_format}"
+            ),
+        }
+
+    imported_document = None
+    try:
+        app.Documents.Open(str(path))
+        imported_document = app.ActiveDocument
+        kind = document_kind(imported_document)
+        result: dict[str, Any] = {
+            "performed": True,
+            "document": str(imported_document.Name),
+            "kind": kind,
+        }
+        if hasattr(imported_document, "Part"):
+            part = imported_document.Part
+            bodies = int(part.Bodies.Count)
+            shapes = sum(
+                int(part.Bodies.Item(index).Shapes.Count)
+                for index in range(1, bodies + 1)
+            )
+            result.update(body_count=bodies, shape_count=shapes)
+            if bodies < 1 or shapes < 1:
+                raise RuntimeError(
+                    f"re-imported {path.name} contains no Part body geometry"
+                )
+        elif hasattr(imported_document, "Product"):
+            components = int(imported_document.Product.Products.Count)
+            result["component_count"] = components
+            if components < 1:
+                raise RuntimeError(
+                    f"re-imported {path.name} contains no Product components"
+                )
+        else:
+            raise RuntimeError(
+                f"re-imported {path.name} is not a CATPart or CATProduct"
+            )
+        result["passed"] = True
+        return result
+    finally:
+        try:
+            if imported_document is not None:
+                imported_document.Close()
+        finally:
+            original_document.Activate()
+
+
+def export_active(
+    app: Any,
+    path: Path,
+    format_name: str | None = None,
+    overwrite_policy: str = "error",
+    verify_reimport: bool = True,
+) -> dict[str, Any]:
     document = active_document(app)
     resolved_format = format_name.strip().lower() if format_name else _EXPORT_FORMATS.get(path.suffix.casefold())
     if not resolved_format:
         raise ContractError(f"unsupported or ambiguous export extension: {path.suffix}")
+    policy = require_choice(
+        overwrite_policy,
+        "overwrite_policy",
+        _EXPORT_POLICIES,
+    )
     path.parent.mkdir(parents=True, exist_ok=True)
-    document.ExportData(str(path), resolved_format)
-    return {
-        "document": document.Name,
-        "path": str(path),
-        "format": resolved_format,
-        "exists": path.exists(),
-        "size_bytes": path.stat().st_size if path.exists() else None,
-    }
+    requested_path = path
+    target_existed = requested_path.exists()
+    if policy == "error" and target_existed:
+        raise ContractError(
+            f"export target already exists: {requested_path}; "
+            "use overwrite_policy='versioned' or 'replace' explicitly"
+        )
+    final_path = (
+        _unique_export_path(requested_path, "__version")
+        if policy == "versioned" and requested_path.exists()
+        else requested_path
+    )
+    temporary_path = _temporary_export_path(final_path)
+    export_key = _reserve_export(document)
+    previous_alerts = bool(_safe_attr(app, "DisplayFileAlerts", True))
+    try:
+        app.DisplayFileAlerts = False
+        document.ExportData(str(temporary_path), resolved_format)
+        file_validation = _validate_export_file(temporary_path)
+        reimport_validation = _validate_export_reimport(
+            app,
+            document,
+            temporary_path,
+            resolved_format,
+            bool(verify_reimport),
+        )
+
+        if policy != "replace" and final_path.exists():
+            raise RuntimeError(
+                f"export target appeared while CATIA was exporting: {final_path}; "
+                f"validated temporary output was preserved at {temporary_path}"
+            )
+        if policy == "replace":
+            os.replace(temporary_path, final_path)
+        else:
+            temporary_path.rename(final_path)
+
+        final_validation = _validate_export_file(final_path)
+        return {
+            "document": document.Name,
+            "requested_path": str(requested_path),
+            "path": str(final_path),
+            "temporary_path": str(temporary_path),
+            "format": resolved_format,
+            "overwrite_policy": policy,
+            "replaced_existing": policy == "replace" and target_existed,
+            "exists": final_validation["exists"],
+            "size_bytes": final_validation["size_bytes"],
+            "pre_replace_size_bytes": file_validation["size_bytes"],
+            "reimport_validation": reimport_validation,
+            "display_file_alerts_previous_value": previous_alerts,
+            "display_file_alerts_restored": True,
+        }
+    finally:
+        try:
+            app.DisplayFileAlerts = previous_alerts
+        finally:
+            _release_export(export_key)
 
 
 def update_active(app: Any) -> dict[str, Any]:

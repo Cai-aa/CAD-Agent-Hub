@@ -88,9 +88,24 @@ def catia_save_active(path: str | None = None, request_id: str | None = None) ->
 
 
 @mcp.tool()
-def catia_export_active(path: str, format_name: str | None = None, request_id: str | None = None) -> dict[str, Any]:
-    """Export active document to a supported CATIA format within configured roots."""
-    return _result("export_active", lambda: executor.export_active(_request_id(request_id), path, format_name))
+def catia_export_active(
+    path: str,
+    format_name: str | None = None,
+    overwrite_policy: str = "error",
+    verify_reimport: bool = True,
+    request_id: str | None = None,
+) -> dict[str, Any]:
+    """Safely export through a unique temporary file, optional re-import validation and explicit overwrite policy."""
+    return _result(
+        "export_active",
+        lambda: executor.export_active(
+            _request_id(request_id),
+            path,
+            format_name,
+            overwrite_policy,
+            verify_reimport,
+        ),
+    )
 
 
 @mcp.tool()

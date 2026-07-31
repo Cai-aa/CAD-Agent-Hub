@@ -82,7 +82,6 @@ def _components(install_path: Path) -> dict[str, bool]:
         "elfini_solver": (bin_dir / "CATElfiniSolver.dll").is_file(),
     }
 
-
 def discover_installations(settings: Settings) -> list[CatiaInstallation]:
     files: list[Path] = []
     if settings.environment_directory.is_dir():
