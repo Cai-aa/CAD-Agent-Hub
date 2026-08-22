@@ -40,6 +40,9 @@ The checked startup wrapper selects `CATIA_MCP_PYTHON`, a local `.venv`, or the 
 
 Copy [examples/codex_config.example.toml](examples/codex_config.example.toml) into the appropriate Codex config. Adjust `CATIA_MCP_ENV_NAME` for another installed release.
 
+The server supports MCP SDK 1.x and 2.x (`mcp>=1.7,<3`). It uses the public
+`MCPServer` API on SDK 2.x and retains the legacy `FastMCP` import only for SDK 1.x.
+
 CATIA and the MCP process must run as the same Windows user and at the same integrity/elevation level. Otherwise the process can see `CNEXT.exe` while `CATIA.Application` remains unavailable through the Running Object Table.
 
 ## Validation
@@ -51,6 +54,7 @@ python -m compileall -q '.\src'
 python '.\scripts\stdio_smoke.py'
 python '.\scripts\probe_environment.py'
 python '.\scripts\probe_live.py'
+python '.\scripts\validate_issue_fixes.py'
 ```
 
 Use `probe_live.py --start-if-missing` only when starting the selected CATIA environment is intended.
@@ -69,3 +73,15 @@ Use `probe_live.py --start-if-missing` only when starting the selected CATIA env
 
 See [docs/advanced-surfaces.md](docs/advanced-surfaces.md) for the GSD tool contracts and
 [docs/compatibility-and-architecture.md](docs/compatibility-and-architecture.md) for the capability model and limitations.
+
+## Pocket direction and capture validation
+
+`catia_add_pocket` accepts `reverse=false` by default. Set `reverse=true` when an
+origin-plane sketch must cut toward material on the opposite side of the sketch
+normal. The result reports the direction orientation, body volume before/after in
+mm^3, `removed_volume_mm3`, and `material_removed`. A zero-volume change is returned as
+`status="no_material_removed"` with a warning instead of looking like a verified cut.
+
+`catia_capture_view` intentionally remains BMP-only for stable CATIA V5 Automation
+compatibility. It uses `catCaptureFormatBMP` (numeric value `4`) and verifies the
+`BM` file signature before returning `is_image=true`; a non-image payload is an error.

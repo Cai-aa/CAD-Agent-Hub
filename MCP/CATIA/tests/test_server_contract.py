@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import asyncio
 import unittest
 
 from catia_mcp.server import mcp
 
 
 class ServerContractTests(unittest.TestCase):
+    @staticmethod
+    def _tools():
+        return {tool.name: tool for tool in asyncio.run(mcp.list_tools())}
+
     def test_required_tool_surface(self) -> None:
-        tools = set(mcp._tool_manager._tools)
+        tools = set(self._tools())
         required = {
             "catia_health_check",
             "catia_connect",
@@ -37,10 +42,14 @@ class ServerContractTests(unittest.TestCase):
         self.assertGreaterEqual(len(tools), 53)
 
     def test_export_tool_defaults_to_non_overwriting_policy(self) -> None:
-        schema = mcp._tool_manager._tools["catia_export_active"].parameters
+        schema = self._tools()["catia_export_active"].input_schema
         properties = schema["properties"]
         self.assertEqual(properties["overwrite_policy"]["default"], "error")
         self.assertTrue(properties["verify_reimport"]["default"])
+
+    def test_pocket_tool_exposes_backward_compatible_reverse_flag(self) -> None:
+        schema = self._tools()["catia_add_pocket"].input_schema
+        self.assertFalse(schema["properties"]["reverse"]["default"])
 
 
 if __name__ == "__main__":

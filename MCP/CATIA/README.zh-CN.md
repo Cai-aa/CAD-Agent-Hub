@@ -47,6 +47,9 @@ CATIA_MCP_ENV_NAME = "CATIA_P3.V5-6R2023.B33"
 CATIA_MCP_MIN_RELEASE_INDEX = "28"
 ```
 
+服务器兼容 MCP SDK 1.x 和 2.x（`mcp>=1.7,<3`）：SDK 2.x 使用公开的
+`MCPServer` API，仅在 SDK 1.x 下回退到旧版 `FastMCP` 导入。
+
 CATIA 与 MCP 必须在相同 Windows 用户和相同权限级别下运行。如果一个以管理员权限启动、另一个不是，可能看得到 `CNEXT.exe`，却无法从 ROT 取得 `CATIA.Application`。
 
 ## 工具分组
@@ -65,6 +68,19 @@ CATIA 与 MCP 必须在相同 Windows 用户和相同权限级别下运行。如
 `catia_export_active` 默认 `overwrite_policy="error"`。目标已存在时不会进入
 CATIA，也不会弹出覆盖窗口。需要保留版本时使用 `versioned`；需要替换时使用
 `replace`，工具会先导出并回读验证唯一临时文件，再执行文件系统替换。
+
+`catia_add_pocket` 新增向后兼容的 `reverse=false` 参数。原点平面草图需要朝
+草图法向另一侧的材料切除时，设置 `reverse=true`。返回结果会给出切除方向、
+以 mm^3 表示的切除前后体积、`removed_volume_mm3` 和 `material_removed`；体积没有下降时返回
+`status="no_material_removed"` 和警告，不再把无效切除伪装成已验证成功。
+
+`catia_capture_view` 继续只接受 BMP，以保持 CATIA V5 Automation 的稳定兼容。
+工具使用 `catCaptureFormatBMP`（数值 `4`），并在返回 `is_image=true` 前检查
+文件头必须为 `BM`；CATIA 静默生成非图片内容时会返回错误。
+
+CATIA 已运行时，可执行 `python .\scripts\validate_issue_fixes.py`，创建隔离测试
+零件并同时验证反向 Pocket 的方向/体积和 BMP 文件头。产物写入 `workspace`，
+脚本不会关闭用户已有文档。
 
 CATIA 内部仿真：
 

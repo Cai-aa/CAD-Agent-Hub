@@ -1,21 +1,78 @@
 from __future__ import annotations
 
 import unittest
-from tempfile import TemporaryDirectory
-
-from catia_mcp.contracts import ContractError
 from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest.mock import ANY, patch
 
+from catia_mcp import modeling
+from catia_mcp.contracts import ContractError
 from catia_mcp.modeling import (
     _body,
     _validate_entities,
     add_components,
+    add_pocket,
+    capture_view,
     close_active,
+    create_parametric_part,
     export_active,
 )
 
 
 class ModelingContractTests(unittest.TestCase):
+    @staticmethod
+    def _pocket_app(volumes: list[float]):
+        feature = type("Feature", (), {"Name": "", "DirectionOrientation": 1})()
+
+        class Sketches:
+            def Item(self, name):
+                return type("Sketch", (), {"Name": name})()
+
+        body = type("Body", (), {"Name": "PartBody", "Sketches": Sketches()})()
+
+        class Bodies:
+            Count = 1
+
+            def Item(self, value):
+                return body
+
+        class ShapeFactory:
+            def AddNewPocket(self, sketch, length):
+                self.call = (sketch.Name, length)
+                return feature
+
+        class SpaWorkbench:
+            def __init__(self):
+                self.volumes = iter(volumes)
+
+            def GetMeasurable(self, reference):
+                return type("Measurable", (), {"Volume": next(self.volumes)})()
+
+        spa = SpaWorkbench()
+        part = type(
+            "Part",
+            (),
+            {
+                "Bodies": Bodies(),
+                "MainBody": body,
+                "ShapeFactory": ShapeFactory(),
+                "CreateReferenceFromObject": lambda self, value: value,
+                "Update": lambda self: None,
+            },
+        )()
+        document = type(
+            "Document",
+            (),
+            {
+                "Name": "PocketProbe.CATPart",
+                "Part": part,
+                "GetWorkbench": lambda self, name: spa,
+            },
+        )()
+        documents = type("Documents", (), {"Count": 1})()
+        app = type("App", (), {"Documents": documents, "ActiveDocument": document})()
+        return app, feature, part
+
     @staticmethod
     def _export_app(payload: bytes = b"new export"):
         class Document:
@@ -116,6 +173,117 @@ class ModelingContractTests(unittest.TestCase):
 
         self.assertEqual(calls, [(("A.CATPart", "B.CATPart"), "All")])
         self.assertEqual(result["component_count"], 2)
+
+    def test_add_pocket_reverses_direction_and_verifies_removed_material(self) -> None:
+        app, feature, part = self._pocket_app([48.0e-6, 44.858407e-6])
+
+        result = add_pocket(app, "BoreSketch", 10, "BorePocket", reverse=True)
+
+        self.assertEqual(part.ShapeFactory.call, ("BoreSketch", 10.0))
+        self.assertEqual(feature.DirectionOrientation, 0)
+        self.assertEqual(result["direction_orientation_before"], 1)
+        self.assertEqual(result["direction_orientation"], 0)
+        self.assertEqual(result["status"], "material_removed")
+        self.assertTrue(result["material_removed"])
+        self.assertAlmostEqual(result["removed_volume_mm3"], 3141.593, places=3)
+
+    def test_add_pocket_reports_when_no_material_was_removed(self) -> None:
+        app, _, _ = self._pocket_app([48.0e-6, 48.0e-6])
+
+        result = add_pocket(app, "BoreSketch", 10, "BorePocket")
+
+        self.assertEqual(result["status"], "no_material_removed")
+        self.assertFalse(result["material_removed"])
+        self.assertIn("reverse=True", result["warning"])
+
+    def test_tube_reverses_origin_plane_bore_pocket(self) -> None:
+        document = type("Document", (), {"Name": "Tube.CATPart"})()
+        with (
+            patch.object(modeling, "create_part"),
+            patch.object(modeling, "create_sketch"),
+            patch.object(modeling, "add_pad"),
+            patch.object(modeling, "add_pocket") as pocket,
+            patch.object(modeling, "active_document", return_value=document),
+        ):
+            pocket.return_value = {"material_removed": True}
+            result = create_parametric_part(
+                object(),
+                "tube",
+                {"diameter_mm": 20, "inner_diameter_mm": 10, "height_mm": 30},
+                "Tube",
+            )
+
+        pocket.assert_called_once_with(
+            ANY,
+            "BoreSketch",
+            30.0,
+            "BorePocket",
+            reverse=True,
+        )
+        self.assertTrue(result["feature_validation"]["bore_pocket"]["material_removed"])
+
+    def test_tube_rejects_bore_pocket_that_did_not_remove_material(self) -> None:
+        document = type("Document", (), {"Name": "Tube.CATPart"})()
+        with (
+            patch.object(modeling, "create_part"),
+            patch.object(modeling, "create_sketch"),
+            patch.object(modeling, "add_pad"),
+            patch.object(
+                modeling,
+                "add_pocket",
+                return_value={"material_removed": False},
+            ),
+            patch.object(modeling, "active_document", return_value=document),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "did not remove material"):
+                create_parametric_part(
+                    object(),
+                    "tube",
+                    {"diameter_mm": 20, "inner_diameter_mm": 10, "height_mm": 30},
+                    "Tube",
+                )
+
+    def test_capture_view_uses_bmp_enum_and_validates_magic(self) -> None:
+        calls = []
+
+        class Viewer:
+            def Reframe(self):
+                calls.append("reframe")
+
+            def CaptureToFile(self, format_code, path):
+                calls.append((format_code, path))
+                Path(path).write_bytes(b"BM" + b"\x00" * 30)
+
+        app = type(
+            "App",
+            (),
+            {"ActiveWindow": type("Window", (), {"ActiveViewer": Viewer()})()},
+        )()
+        with TemporaryDirectory() as folder:
+            target = Path(folder) / "capture.bmp"
+            result = capture_view(app, target)
+
+        self.assertEqual(calls[0], "reframe")
+        self.assertEqual(calls[1][0], 4)
+        self.assertEqual(result["format"], "BMP")
+        self.assertTrue(result["is_image"])
+
+    def test_capture_view_rejects_non_bmp_payload(self) -> None:
+        class Viewer:
+            def Reframe(self):
+                pass
+
+            def CaptureToFile(self, format_code, path):
+                Path(path).write_bytes(b"\x002\x113D PL")
+
+        app = type(
+            "App",
+            (),
+            {"ActiveWindow": type("Window", (), {"ActiveViewer": Viewer()})()},
+        )()
+        with TemporaryDirectory() as folder:
+            with self.assertRaisesRegex(RuntimeError, "non-BMP payload"):
+                capture_view(app, Path(folder) / "capture.bmp")
 
     def test_export_default_refuses_existing_target_before_catia(self) -> None:
         app, document = self._export_app()

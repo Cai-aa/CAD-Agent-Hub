@@ -214,8 +214,19 @@ class CatiaExecutor:
     def add_pad(self, request_id: str, sketch_name: str, length_mm: float, name: str, body_name: str) -> dict[str, Any]:
         return self._run(request_id, lambda app: modeling.add_pad(app, sketch_name, length_mm, name, body_name))
 
-    def add_pocket(self, request_id: str, sketch_name: str, length_mm: float, name: str, body_name: str) -> dict[str, Any]:
-        return self._run(request_id, lambda app: modeling.add_pocket(app, sketch_name, length_mm, name, body_name))
+    def add_pocket(
+        self,
+        request_id: str,
+        sketch_name: str,
+        length_mm: float,
+        name: str,
+        body_name: str,
+        reverse: bool,
+    ) -> dict[str, Any]:
+        return self._run(
+            request_id,
+            lambda app: modeling.add_pocket(app, sketch_name, length_mm, name, body_name, reverse),
+        )
 
     def create_parametric_part(
         self,

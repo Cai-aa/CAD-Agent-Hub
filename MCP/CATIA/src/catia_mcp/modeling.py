@@ -18,6 +18,9 @@ from .contracts import (
 )
 
 
+CAT_CAPTURE_FORMAT_BMP = 4
+
+
 def _collection_items(collection: Any, limit: int = 500) -> Iterable[Any]:
     count = min(int(collection.Count), limit)
     for index in range(1, count + 1):
@@ -472,7 +475,26 @@ def add_pad(app: Any, sketch_name: str, length_mm: float, name: str = "Pad", bod
     return {"document": document.Name, "feature": feature.Name, "type": "Pad", "length_mm": length}
 
 
-def add_pocket(app: Any, sketch_name: str, length_mm: float, name: str = "Pocket", body_name: str = "PartBody") -> dict[str, Any]:
+def _body_volume(document: Any, part: Any, body: Any) -> tuple[float | None, str | None]:
+    try:
+        reference = part.CreateReferenceFromObject(body)
+        measurable = document.GetWorkbench("SPAWorkbench").GetMeasurable(reference)
+        volume_m3 = float(_safe_attr(measurable, "Volume", None))
+        if not math.isfinite(volume_m3) or volume_m3 < 0:
+            raise ValueError(f"invalid body volume: {volume_m3}")
+        return volume_m3 * 1_000_000_000.0, None
+    except Exception as exc:
+        return None, f"{type(exc).__name__}: {exc}"
+
+
+def add_pocket(
+    app: Any,
+    sketch_name: str,
+    length_mm: float,
+    name: str = "Pocket",
+    body_name: str = "PartBody",
+    reverse: bool = False,
+) -> dict[str, Any]:
     sketch_name = require_safe_name(sketch_name, "sketch_name")
     name = require_safe_name(name)
     length = require_positive(length_mm, "length_mm")
@@ -480,15 +502,60 @@ def add_pocket(app: Any, sketch_name: str, length_mm: float, name: str = "Pocket
     part = document.Part
     body = _body(part, body_name)
     part.InWorkObject = body
+    volume_before_mm3, volume_before_error = _body_volume(document, part, body)
     feature = part.ShapeFactory.AddNewPocket(_sketch(part, body_name, sketch_name), length)
     feature.Name = name
+    direction_before = int(_safe_attr(feature, "DirectionOrientation", 0))
+    if reverse:
+        if direction_before not in (0, 1):
+            raise RuntimeError(f"unexpected pocket DirectionOrientation: {direction_before}")
+        feature.DirectionOrientation = 1 - direction_before
     part.Update()
-    return {"document": document.Name, "feature": feature.Name, "type": "Pocket", "length_mm": length}
+    direction_after = int(_safe_attr(feature, "DirectionOrientation", direction_before))
+    volume_after_mm3, volume_after_error = _body_volume(document, part, body)
+
+    material_removed: bool | None = None
+    removed_volume: float | None = None
+    status = "created_unverified"
+    warning = None
+    if volume_before_mm3 is not None and volume_after_mm3 is not None:
+        removed_volume = volume_before_mm3 - volume_after_mm3
+        tolerance = max(1e-6, abs(volume_before_mm3) * 1e-9)
+        material_removed = removed_volume > tolerance
+        status = "material_removed" if material_removed else "no_material_removed"
+        if not material_removed:
+            warning = (
+                "Pocket feature was created but measurable body volume did not decrease; "
+                "check the sketch support/direction and retry with reverse=True when appropriate"
+            )
+
+    result = {
+        "document": document.Name,
+        "feature": feature.Name,
+        "type": "Pocket",
+        "length_mm": length,
+        "reverse": bool(reverse),
+        "direction_orientation_before": direction_before,
+        "direction_orientation": direction_after,
+        "status": status,
+        "material_removed": material_removed,
+        "volume_before_mm3": volume_before_mm3,
+        "volume_after_mm3": volume_after_mm3,
+        "removed_volume_mm3": removed_volume,
+        "volume_unit": "mm^3",
+    }
+    measurement_errors = [error for error in (volume_before_error, volume_after_error) if error]
+    if measurement_errors:
+        result["measurement_errors"] = measurement_errors
+    if warning:
+        result["warning"] = warning
+    return result
 
 
 def create_parametric_part(app: Any, part_type: str, parameters: dict[str, Any], title: str) -> dict[str, Any]:
     kind = require_choice(part_type, "part_type", ("block", "cylinder", "tube"))
     create_part(app, title)
+    feature_validation: dict[str, Any] = {}
     if kind == "block":
         length = require_positive(parameters.get("length_mm"), "length_mm")
         width = require_positive(parameters.get("width_mm"), "width_mm")
@@ -505,8 +572,14 @@ def create_parametric_part(app: Any, part_type: str, parameters: dict[str, Any],
             if inner >= diameter:
                 raise ContractError("inner_diameter_mm must be smaller than diameter_mm")
             create_sketch(app, "BoreSketch", "xy", [{"kind": "circle", "center": [0, 0], "radius": inner / 2}])
-            add_pocket(app, "BoreSketch", height, "BorePocket")
-    return {"document": active_document(app).Name, "part_type": kind, "parameters": parameters}
+            bore = add_pocket(app, "BoreSketch", height, "BorePocket", reverse=True)
+            feature_validation["bore_pocket"] = bore
+            if bore.get("material_removed") is False:
+                raise RuntimeError("tube bore pocket was created but did not remove material")
+    result = {"document": active_document(app).Name, "part_type": kind, "parameters": parameters}
+    if feature_validation:
+        result["feature_validation"] = feature_validation
+    return result
 
 
 def add_components(app: Any, paths: list[Path]) -> dict[str, Any]:
@@ -726,8 +799,25 @@ def capture_view(app: Any, path: Path) -> dict[str, Any]:
     path.parent.mkdir(parents=True, exist_ok=True)
     viewer = app.ActiveWindow.ActiveViewer
     viewer.Reframe()
-    viewer.CaptureToFile(0, str(path))  # catCaptureFormatBMP
-    return {"path": str(path), "exists": path.exists(), "size_bytes": path.stat().st_size if path.exists() else None}
+    viewer.CaptureToFile(CAT_CAPTURE_FORMAT_BMP, str(path))
+    if not path.is_file():
+        raise RuntimeError(f"CATIA did not create the requested capture: {path}")
+    size_bytes = path.stat().st_size
+    with path.open("rb") as handle:
+        magic = handle.read(2)
+    if magic != b"BM":
+        raise RuntimeError(
+            "CATIA CaptureToFile returned a non-BMP payload "
+            f"(format={CAT_CAPTURE_FORMAT_BMP}, magic={magic.hex() or 'empty'}, size_bytes={size_bytes})"
+        )
+    return {
+        "path": str(path),
+        "exists": True,
+        "size_bytes": size_bytes,
+        "format": "BMP",
+        "format_code": CAT_CAPTURE_FORMAT_BMP,
+        "is_image": True,
+    }
 
 
 def close_active(

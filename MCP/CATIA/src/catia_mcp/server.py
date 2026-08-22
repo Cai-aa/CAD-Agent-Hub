@@ -3,7 +3,12 @@ from __future__ import annotations
 import uuid
 from typing import Any, Callable
 
-from mcp.server.fastmcp import FastMCP
+try:
+    # MCP SDK 2.x promotes the high-level server to the public mcp.server API.
+    from mcp.server import MCPServer as MCPApplication
+except ImportError:  # pragma: no cover - exercised only with MCP SDK 1.x
+    # MCP SDK 1.x exposed the same decorator-based API as FastMCP.
+    from mcp.server.fastmcp import FastMCP as MCPApplication
 
 from .com_runtime import CatiaUnavailable
 from .contracts import ContractError
@@ -19,7 +24,7 @@ Compute call is process completion, not proof of valid physics: inspect the mode
 mesh, result images and generated report before accepting a simulation.
 """
 
-mcp = FastMCP("CATIA Agent MCP", instructions=INSTRUCTIONS)
+mcp = MCPApplication("CATIA Agent MCP", instructions=INSTRUCTIONS)
 executor = CatiaExecutor()
 
 
@@ -449,10 +454,16 @@ def catia_add_pocket(
     length_mm: float,
     name: str = "Pocket",
     body_name: str = "PartBody",
+    reverse: bool = False,
     request_id: str | None = None,
 ) -> dict[str, Any]:
-    """Create a native Part Design pocket from an existing sketch."""
-    return _result("add_pocket", lambda: executor.add_pocket(_request_id(request_id), sketch_name, length_mm, name, body_name))
+    """Create a native Part Design pocket, optionally reversing its extrusion direction."""
+    return _result(
+        "add_pocket",
+        lambda: executor.add_pocket(
+            _request_id(request_id), sketch_name, length_mm, name, body_name, reverse
+        ),
+    )
 
 
 @mcp.tool()
