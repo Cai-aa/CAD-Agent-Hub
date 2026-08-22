@@ -4,13 +4,18 @@ import importlib
 import uuid
 from typing import Any
 
-from mcp.server.fastmcp import FastMCP
+try:
+    # MCP SDK 2.x promotes the high-level server to the public mcp.server API.
+    from mcp.server import MCPServer as MCPApplication
+except ImportError:  # pragma: no cover - exercised only with MCP SDK 1.x
+    # MCP SDK 1.x exposed the same decorator-based API as FastMCP.
+    from mcp.server.fastmcp import FastMCP as MCPApplication
 
 from .contracts import ContractError
 from .executor import SolidWorksExecutor
 from .feature_graph import compile_feature_graph
 
-mcp = FastMCP("SolidWorks Agent MCP")
+mcp = MCPApplication("SolidWorks Agent MCP")
 executor = SolidWorksExecutor()
 
 
@@ -49,6 +54,198 @@ def solidworks_operation_status() -> dict[str, Any]:
 def solidworks_connect(start_if_missing: bool = False) -> dict[str, Any]:
     """Attach to the existing SolidWorks instance; opt in to starting a new one only when needed."""
     return _result("connect", lambda: executor.connect(start_if_missing))
+
+
+@mcp.tool()
+def solidworks_list_documents(request_id: str | None = None) -> dict[str, Any]:
+    """List open SolidWorks documents, paths, types, dirty state, and the active document."""
+    return _result("list_documents", lambda: executor.list_documents(_request_id(request_id)))
+
+
+@mcp.tool()
+def solidworks_activate_document(
+    title: str,
+    request_id: str | None = None,
+) -> dict[str, Any]:
+    """Activate one already-open SolidWorks document by its exact title."""
+    return _result(
+        "activate_document",
+        lambda: executor.activate_document(_request_id(request_id), title),
+    )
+
+
+@mcp.tool()
+def solidworks_get_bounding_box(
+    include_hidden: bool = True,
+    request_id: str | None = None,
+) -> dict[str, Any]:
+    """Return the active part or assembly bounding box in millimetres."""
+    return _result(
+        "get_bounding_box",
+        lambda: executor.get_bounding_box(_request_id(request_id), include_hidden),
+    )
+
+
+@mcp.tool()
+def solidworks_get_mass_properties(request_id: str | None = None) -> dict[str, Any]:
+    """Return mass, volume, area, density, centre of mass, and principal moments when available."""
+    return _result(
+        "get_mass_properties",
+        lambda: executor.get_mass_properties(_request_id(request_id)),
+    )
+
+
+@mcp.tool()
+def solidworks_rebuild_diagnostics(
+    perform_rebuild: bool = False,
+    full_rebuild: bool = False,
+    request_id: str | None = None,
+) -> dict[str, Any]:
+    """Inspect rebuild/dirty state, optionally performing a normal or full rebuild first."""
+    return _result(
+        "rebuild_diagnostics",
+        lambda: executor.rebuild_diagnostics(
+            _request_id(request_id),
+            perform_rebuild,
+            full_rebuild,
+        ),
+    )
+
+
+@mcp.tool()
+def solidworks_capture_view(
+    output_path: str,
+    width: int = 1600,
+    height: int = 900,
+    fit_view: bool = True,
+    overwrite: bool = False,
+    request_id: str | None = None,
+) -> dict[str, Any]:
+    """Capture the active SolidWorks model view to a BMP evidence file."""
+    return _result(
+        "capture_view",
+        lambda: executor.capture_view(
+            _request_id(request_id),
+            output_path,
+            width,
+            height,
+            fit_view,
+            overwrite,
+        ),
+    )
+
+
+@mcp.tool()
+def solidworks_list_configurations(request_id: str | None = None) -> dict[str, Any]:
+    """List configurations in the active document and identify the active one."""
+    return _result(
+        "list_configurations",
+        lambda: executor.list_configurations(_request_id(request_id)),
+    )
+
+
+@mcp.tool()
+def solidworks_activate_configuration(
+    configuration_name: str,
+    request_id: str | None = None,
+) -> dict[str, Any]:
+    """Activate an existing configuration by exact name without saving the document."""
+    return _result(
+        "activate_configuration",
+        lambda: executor.activate_configuration(_request_id(request_id), configuration_name),
+    )
+
+
+@mcp.tool()
+def solidworks_create_configuration(
+    configuration_name: str,
+    comment: str = "",
+    alternate_name: str = "",
+    activate: bool = True,
+    request_id: str | None = None,
+) -> dict[str, Any]:
+    """Create a non-derived configuration, optionally making it active; saving remains explicit."""
+    return _result(
+        "create_configuration",
+        lambda: executor.create_configuration(
+            _request_id(request_id),
+            configuration_name,
+            comment,
+            alternate_name,
+            activate,
+        ),
+    )
+
+
+@mcp.tool()
+def solidworks_get_custom_properties(
+    configuration_name: str | None = None,
+    request_id: str | None = None,
+) -> dict[str, Any]:
+    """Read document-level properties, or one exact configuration's properties when named."""
+    return _result(
+        "get_custom_properties",
+        lambda: executor.get_custom_properties(_request_id(request_id), configuration_name),
+    )
+
+
+@mcp.tool()
+def solidworks_set_custom_properties(
+    properties: dict[str, Any],
+    configuration_name: str | None = None,
+    request_id: str | None = None,
+) -> dict[str, Any]:
+    """Upsert validated text, numeric, or boolean custom properties without saving the document."""
+    return _result(
+        "set_custom_properties",
+        lambda: executor.set_custom_properties(
+            _request_id(request_id),
+            properties,
+            configuration_name,
+        ),
+    )
+
+
+@mcp.tool()
+def solidworks_list_material_databases(request_id: str | None = None) -> dict[str, Any]:
+    """List material database paths configured in the connected SolidWorks instance."""
+    return _result(
+        "list_material_databases",
+        lambda: executor.list_material_databases(_request_id(request_id)),
+    )
+
+
+@mcp.tool()
+def solidworks_get_material(
+    configuration_name: str | None = None,
+    request_id: str | None = None,
+) -> dict[str, Any]:
+    """Read the material assigned to the active or named part configuration."""
+    return _result(
+        "get_material",
+        lambda: executor.get_material(_request_id(request_id), configuration_name),
+    )
+
+
+@mcp.tool()
+def solidworks_assign_material(
+    database_path: str,
+    material_name: str,
+    configuration_name: str | None = None,
+    rebuild: bool = True,
+    request_id: str | None = None,
+) -> dict[str, Any]:
+    """Assign a material from an existing .sldmat database to one part configuration."""
+    return _result(
+        "assign_material",
+        lambda: executor.assign_material(
+            _request_id(request_id),
+            database_path,
+            material_name,
+            configuration_name,
+            rebuild,
+        ),
+    )
 
 
 @mcp.tool()

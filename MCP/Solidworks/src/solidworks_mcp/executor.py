@@ -22,6 +22,24 @@ from .interactive import (
     set_dimension,
     set_feature_parameter,
 )
+from .inspection import (
+    activate_document as activate_open_document,
+    capture_view as capture_model_view,
+    get_bounding_box as inspect_bounding_box,
+    get_mass_properties as inspect_mass_properties,
+    list_documents as inspect_documents,
+    rebuild_diagnostics as inspect_rebuild_diagnostics,
+)
+from .metadata import (
+    activate_configuration as activate_model_configuration,
+    assign_material as assign_model_material,
+    create_configuration as create_model_configuration,
+    get_custom_properties as inspect_custom_properties,
+    get_material as inspect_model_material,
+    list_configurations as inspect_configurations,
+    list_material_databases as inspect_material_databases,
+    set_custom_properties as write_custom_properties,
+)
 from .native_features import execute_plan, feature_names
 from .part_generators import build_parametric_part_graph
 from .primitives import build_sphere_graph
@@ -251,6 +269,183 @@ class SolidWorksExecutor:
 
     def connect(self, start_if_missing: bool = False) -> dict[str, Any]:
         return self.session.connect(self.settings.visible, start_if_missing)
+
+    def list_documents(self, request_id: str) -> dict[str, Any]:
+        def action(app: Any) -> dict[str, Any]:
+            active = self._active_model(app)
+            return {
+                "operation": "list_documents",
+                **inspect_documents(self._open_documents(app), active),
+            }
+        return self.session.execute(request_id, action)
+
+    def activate_document(self, request_id: str, title: str) -> dict[str, Any]:
+        title = require_text(title, "title")
+
+        def action(app: Any) -> dict[str, Any]:
+            result = activate_open_document(app, title, self._open_documents(app))
+            self._active_document = getattr(app, "ActiveDoc", None)
+            return result
+        return self.session.execute(request_id, action)
+
+    def get_bounding_box(self, request_id: str, include_hidden: bool = True) -> dict[str, Any]:
+        def action(app: Any) -> dict[str, Any]:
+            model = self._active_model(app)
+            if model is None:
+                raise ContractError("No active SolidWorks document")
+            return {"operation": "get_bounding_box", **inspect_bounding_box(model, include_hidden)}
+        return self.session.execute(request_id, action)
+
+    def get_mass_properties(self, request_id: str) -> dict[str, Any]:
+        def action(app: Any) -> dict[str, Any]:
+            model = self._active_model(app)
+            if model is None:
+                raise ContractError("No active SolidWorks document")
+            return {"operation": "get_mass_properties", **inspect_mass_properties(model)}
+        return self.session.execute(request_id, action)
+
+    def rebuild_diagnostics(
+        self,
+        request_id: str,
+        perform_rebuild: bool = False,
+        full_rebuild: bool = False,
+    ) -> dict[str, Any]:
+        def action(app: Any) -> dict[str, Any]:
+            model = self._active_model(app)
+            if model is None:
+                raise ContractError("No active SolidWorks document")
+            return inspect_rebuild_diagnostics(
+                model,
+                perform_rebuild=perform_rebuild,
+                full_rebuild=full_rebuild,
+            )
+        return self.session.execute(request_id, action)
+
+    def capture_view(
+        self,
+        request_id: str,
+        output_path: str,
+        width: int = 1600,
+        height: int = 900,
+        fit_view: bool = True,
+        overwrite: bool = False,
+    ) -> dict[str, Any]:
+        def action(app: Any) -> dict[str, Any]:
+            model = self._active_model(app)
+            if model is None:
+                raise ContractError("No active SolidWorks document")
+            return capture_model_view(
+                model,
+                output_path,
+                width=width,
+                height=height,
+                fit_view=fit_view,
+                overwrite=overwrite,
+            )
+        return self.session.execute(request_id, action)
+
+    def list_configurations(self, request_id: str) -> dict[str, Any]:
+        def action(app: Any) -> dict[str, Any]:
+            model = self._active_model(app)
+            if model is None:
+                raise ContractError("No active SolidWorks document")
+            return {"operation": "list_configurations", **inspect_configurations(model)}
+        return self.session.execute(request_id, action)
+
+    def activate_configuration(self, request_id: str, configuration_name: str) -> dict[str, Any]:
+        def action(app: Any) -> dict[str, Any]:
+            model = self._active_model(app)
+            if model is None:
+                raise ContractError("No active SolidWorks document")
+            return activate_model_configuration(model, configuration_name)
+        return self.session.execute(request_id, action)
+
+    def create_configuration(
+        self,
+        request_id: str,
+        configuration_name: str,
+        comment: str = "",
+        alternate_name: str = "",
+        activate: bool = True,
+    ) -> dict[str, Any]:
+        def action(app: Any) -> dict[str, Any]:
+            model = self._active_model(app)
+            if model is None:
+                raise ContractError("No active SolidWorks document")
+            return create_model_configuration(
+                model,
+                configuration_name,
+                comment=comment,
+                alternate_name=alternate_name,
+                activate=activate,
+            )
+        return self.session.execute(request_id, action)
+
+    def get_custom_properties(
+        self,
+        request_id: str,
+        configuration_name: str | None = None,
+    ) -> dict[str, Any]:
+        def action(app: Any) -> dict[str, Any]:
+            model = self._active_model(app)
+            if model is None:
+                raise ContractError("No active SolidWorks document")
+            return {
+                "operation": "get_custom_properties",
+                **inspect_custom_properties(model, configuration_name),
+            }
+        return self.session.execute(request_id, action)
+
+    def set_custom_properties(
+        self,
+        request_id: str,
+        properties: dict[str, Any],
+        configuration_name: str | None = None,
+    ) -> dict[str, Any]:
+        def action(app: Any) -> dict[str, Any]:
+            model = self._active_model(app)
+            if model is None:
+                raise ContractError("No active SolidWorks document")
+            return write_custom_properties(model, properties, configuration_name)
+        return self.session.execute(request_id, action)
+
+    def list_material_databases(self, request_id: str) -> dict[str, Any]:
+        def action(app: Any) -> dict[str, Any]:
+            return {"operation": "list_material_databases", **inspect_material_databases(app)}
+        return self.session.execute(request_id, action)
+
+    def get_material(
+        self,
+        request_id: str,
+        configuration_name: str | None = None,
+    ) -> dict[str, Any]:
+        def action(app: Any) -> dict[str, Any]:
+            model = self._active_model(app)
+            if model is None:
+                raise ContractError("No active SolidWorks document")
+            return {"operation": "get_material", **inspect_model_material(model, configuration_name)}
+        return self.session.execute(request_id, action)
+
+    def assign_material(
+        self,
+        request_id: str,
+        database_path: str,
+        material_name: str,
+        configuration_name: str | None = None,
+        rebuild: bool = True,
+    ) -> dict[str, Any]:
+        def action(app: Any) -> dict[str, Any]:
+            model = self._active_model(app)
+            if model is None:
+                raise ContractError("No active SolidWorks document")
+            return assign_model_material(
+                model,
+                database_path,
+                material_name,
+                configuration_name,
+                rebuild=rebuild,
+            )
+        return self.session.execute(request_id, action)
 
     def new_part(self, request_id: str, title: str = "Part") -> dict[str, Any]:
         title = require_text(title, "title")

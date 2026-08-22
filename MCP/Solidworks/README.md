@@ -58,6 +58,20 @@ $env:SOLIDWORKS_REDRAW_AFTER_OPERATION = 'true'
 - `solidworks_health_check`
 - `solidworks_operation_status`
 - `solidworks_connect`
+- `solidworks_list_documents`
+- `solidworks_activate_document`
+- `solidworks_get_bounding_box`
+- `solidworks_get_mass_properties`
+- `solidworks_rebuild_diagnostics`
+- `solidworks_capture_view`
+- `solidworks_list_configurations`
+- `solidworks_activate_configuration`
+- `solidworks_create_configuration`
+- `solidworks_get_custom_properties`
+- `solidworks_set_custom_properties`
+- `solidworks_list_material_databases`
+- `solidworks_get_material`
+- `solidworks_assign_material`
 - `solidworks_create_part`
 - `solidworks_open_document`
 - `solidworks_save_active`
@@ -76,6 +90,90 @@ $env:SOLIDWORKS_REDRAW_AFTER_OPERATION = 'true'
 - `solidworks_execute_feature_graph`
 - `solidworks_create_involute_spur_gear`
 - `solidworks_create_spur_gear`（旧版概念直边齿轮，仅兼容保留）
+
+## 模型检查与取证 / Model inspection and evidence
+
+首批检查工具覆盖打开文档、包围盒、质量属性、重建状态和视图截图。读取工具不会保存或关闭用户文档；
+`solidworks_activate_document` 只接受当前已打开文档的精确标题。
+
+The inspection tools cover open documents, bounding boxes, mass properties,
+rebuild state, and viewport evidence. Read operations do not save or close user
+documents. `solidworks_activate_document` accepts only the exact title of an
+already-open document.
+
+读取当前零件或装配体包围盒：
+
+```json
+{
+  "include_hidden": true
+}
+```
+
+只读检查重建状态：
+
+```json
+{
+  "perform_rebuild": false,
+  "full_rebuild": false
+}
+```
+
+保存当前模型视图；输出必须为 BMP，默认不会覆盖已有文件：
+
+```json
+{
+  "output_path": "C:\\path\\to\\exports\\solidworks_view.bmp",
+  "width": 1600,
+  "height": 900,
+  "fit_view": true,
+  "overwrite": false
+}
+```
+
+## 材料、配置与属性 / Materials, configurations, and properties
+
+第二阶段工具支持列出、创建和切换配置，读取或批量写入文档级/配置级自定义属性，
+以及从 SolidWorks 已配置的 `.sldmat` 数据库读取和分配材料。所有写操作只修改当前
+内存文档，不会自动保存；确认结果后显式调用 `solidworks_save_active`。
+
+The second-stage tools list, create, and activate configurations; read or batch
+upsert document/configuration custom properties; and assign materials from an
+existing SolidWorks `.sldmat` database. Mutations do not auto-save. Call
+`solidworks_save_active` explicitly after verification.
+
+创建并激活一个配置：
+
+```json
+{
+  "configuration_name": "Inspection",
+  "comment": "QA inspection state",
+  "alternate_name": "INSPECT",
+  "activate": true
+}
+```
+
+批量写入文档级属性；传入 `configuration_name` 可改为配置级属性：
+
+```json
+{
+  "properties": {
+    "PartNumber": "SW-MCP-001",
+    "Revision": 2,
+    "Released": true
+  }
+}
+```
+
+材料分配使用 `solidworks_list_material_databases` 返回的精确数据库路径：
+
+```json
+{
+  "database_path": "C:\\path\\to\\solidworks materials.sldmat",
+  "material_name": "Plain Carbon Steel",
+  "configuration_name": "Inspection",
+  "rebuild": true
+}
+```
 
 ## 增量编辑示例 / Incremental editing
 
@@ -187,6 +285,9 @@ TipChamfer
 所有数值输入使用毫米和角度；执行层进入 SolidWorks API 前统一转换为米和弧度。
 
 ## 安装 / Install
+
+兼容 MCP Python SDK 1.x 与 2.x。SDK 2.x 使用公开的 `mcp.server.MCPServer`，
+SDK 1.x 自动回退到 `mcp.server.fastmcp.FastMCP`。
 
 使用已安装依赖的 Python 环境：
 
