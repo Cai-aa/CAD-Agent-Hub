@@ -1,5 +1,9 @@
 # NX MCP(路线 A)
 
+> **旧版说明：** 当前修复版入口、安装和验证流程请改看
+> [`README.current.zh-CN.md`](README.current.zh-CN.md)。旧的 `mcp_server.py`、
+> `nx_mcp_plugin.py`、`start_mcp.py` 仅保留作历史参考。
+
 用 Claude Code 通过 MCP 驱动**正在运行的 Siemens NX 2412** 进行三维建模。
 
 ## 为什么是路线 A

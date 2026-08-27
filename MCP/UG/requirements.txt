@@ -1,0 +1,4 @@
+# MCP 1.27.1 on the configured mirror imports a separately versioned
+# mcp-types package, but only incompatible mcp-types 2.0.0 is available there.
+# Keep this server on the last monolithic 1.x SDK until the 2.x migration lands.
+mcp==1.26.0

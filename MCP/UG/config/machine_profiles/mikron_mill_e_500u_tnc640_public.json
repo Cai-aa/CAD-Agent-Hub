@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "mikron_mill_e_500u_tnc640_public",
+  "display_name": "Mikron MILL E 500 U / HEIDENHAIN TNC 640",
+  "source_classification": "public_machine_specification_only",
+  "units": "millimeters",
+  "kinematics": {
+    "type": "vertical_dual_rotary_table_bc",
+    "linear_axes": {
+      "x": {"travel_mm": 500.0},
+      "y": {"travel_mm": 450.0},
+      "z": {"travel_mm": 400.0}
+    },
+    "rotary_axes": {
+      "b": {"minimum_deg": -65.0, "maximum_deg": 120.0},
+      "c": {"continuous": true}
+    }
+  },
+  "controller_family": "HEIDENHAIN TNC 640",
+  "safety": {
+    "vendor_assets_embedded": false,
+    "controller_backup_embedded": false,
+    "serial_or_license_data_embedded": false,
+    "postprocess_enabled_by_default": false,
+    "production_nc_certified": false,
+    "requires_independent_machine_simulation": true,
+    "requires_dry_run_and_operator_approval": true
+  }
+}

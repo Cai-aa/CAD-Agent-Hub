@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "five_axis_machine": {
+      "source_part": "ABSOLUTE_PATH_TO_MACHINE_GEOMETRY.prt",
+      "expected_axes": ["X", "Y", "Z", "B", "C"],
+      "expected_controller": "CONTROLLER_NAME",
+      "machine_libref": "five_axis_machine",
+      "kinematic_definition": "ABSOLUTE_PATH_TO_MACHINE_DEFINITION.mch",
+      "geometry_root": "ABSOLUTE_PATH_TO_AXIS_GEOMETRY_FOLDER"
+    }
+  }
+}

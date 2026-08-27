@@ -1,10 +1,36 @@
 [project]
 name = "nx-mcp"
-version = "0.1.0"
-description = "MCP server driving a live Siemens NX 2412 session over a socket bridge (Route A)."
+version = "0.20.1"
+description = "MCP server driving a live Siemens NX 2412 session over a non-blocking local remoting bridge."
 requires-python = ">=3.11"
 dependencies = [
-    "mcp>=1.2.0",
+    "mcp==1.26.0",
+]
+
+[project.scripts]
+nx-mcp = "nx_mcp.server:main"
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["nx_mcp"]
+include-package-data = false
+
+[tool.setuptools.package-dir]
+nx_mcp = "."
+
+[tool.setuptools.package-data]
+nx_mcp = [
+    "requirements.txt",
+    "dotnet_bridge/*.cs",
+    "dotnet_bridge/*.ps1",
+    "dotnet_bridge/bin/NXMcPRemotingServer.dll",
+    "dotnet_bridge/bin/NXMcPSimulationRuntimeV3.dll",
+    "dotnet_bridge/bin/NXRemoteClient.exe",
+    "config/*.example.json",
+    "config/machine_profiles/*.json",
 ]
 
 [tool.nx-mcp]

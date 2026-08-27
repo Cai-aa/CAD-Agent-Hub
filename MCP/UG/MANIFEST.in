@@ -1,0 +1,7 @@
+prune workspace
+prune artifacts
+exclude config/machine_sources.local
+exclude dotnet_bridge/bin/NXMcPRuntimeStore.dll
+exclude dotnet_bridge/bin/NXMcPSimulationRuntime.dll
+exclude dotnet_bridge/bin/NXMcPSimulationRuntimeV2.dll
+global-exclude *.py[cod]
