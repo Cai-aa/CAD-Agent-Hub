@@ -24,6 +24,11 @@ catia_export_active(
 - `replace`: export and validate a unique temporary file, then replace the final
   target through the filesystem.
 
+`format_name` accepts the canonical short exchange names (`stp`, `igs`, `stl`,
+`3dxml`, `model`, `cgr`, `pdf`, `dxf`, `dwg`). The long synonyms `step` and
+`iges` are normalized to `stp` and `igs`, because older releases such as V5R21
+reject the long names outright in `ExportData`.
+
 ## Fixed workflow
 
 1. Check the final target before calling `ExportData`.

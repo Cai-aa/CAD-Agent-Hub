@@ -21,6 +21,10 @@ catia_export_active(
   `Engine_Turbine_Disk.__version_20260731_094400.step`。
 - `replace`：显式替换。先导出和验证唯一临时文件，再通过文件系统替换正式目标。
 
+`format_name` 接受规范的短名称（`stp`、`igs`、`stl`、`3dxml`、`model`、
+`cgr`、`pdf`、`dxf`、`dwg`）。长同义词 `step` 与 `iges` 会先规范化为 `stp`
+和 `igs`，因为 V5R21 等旧版本会在 `ExportData` 中直接拒绝长名称。
+
 ## 固定执行顺序
 
 1. 在进入 `ExportData` 前检查正式目标。

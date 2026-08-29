@@ -4,6 +4,7 @@ import argparse
 import json
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from catia_mcp.config import Settings
 from catia_mcp.executor import CatiaExecutor
@@ -65,7 +66,19 @@ def main() -> None:
                 expected_document_name=part_name,
             )
         if original_name:
-            executor.session.run("smoke-reactivate-original", lambda app: (app.Documents.Item(original_name).Activate() or {"activated": original_name}))
+            def _reactivate_original(app: Any) -> dict[str, Any]:
+                # On older releases such as V5R21 the originally open document can
+                # leave the Documents collection while the smoke model is built.
+                # Verify it is still open before reactivating it.
+                for index in range(1, int(app.Documents.Count) + 1):
+                    if str(app.Documents.Item(index).Name) == original_name:
+                        app.Documents.Item(original_name).Activate()
+                        return {"activated": original_name}
+                return {"skipped": original_name, "reason": "document no longer open"}
+
+            summary["reactivate_original"] = executor.session.run(
+                "smoke-reactivate-original", _reactivate_original
+            )
         summary["artifacts"] = [str(path) for path in workspace.glob("catia_mcp_live_smoke*")]
         print(json.dumps(summary, ensure_ascii=False, indent=2))
     finally:
