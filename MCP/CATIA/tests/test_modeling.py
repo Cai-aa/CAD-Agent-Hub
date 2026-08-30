@@ -314,6 +314,42 @@ class ModelingContractTests(unittest.TestCase):
             self.assertFalse(document.export_calls[0]["alerts"])
         self.assertTrue(app.DisplayFileAlerts)
 
+    def test_export_normalizes_long_format_aliases(self) -> None:
+        app, document = self._export_app(b"aliased")
+        with TemporaryDirectory() as folder:
+            result = export_active(
+                app,
+                Path(folder) / "Model.step",
+                format_name="step",
+                verify_reimport=False,
+            )
+            self.assertEqual(document.export_calls[0]["format"], "stp")
+            self.assertEqual(result["format"], "stp")
+        self.assertTrue(app.DisplayFileAlerts)
+
+    def test_export_normalizes_iges_alias_case_insensitively(self) -> None:
+        app, document = self._export_app(b"aliased")
+        with TemporaryDirectory() as folder:
+            export_active(
+                app,
+                Path(folder) / "Model.igs",
+                format_name="IGES",
+                verify_reimport=False,
+            )
+            self.assertEqual(document.export_calls[0]["format"], "igs")
+
+    def test_export_keeps_canonical_format_names(self) -> None:
+        app, document = self._export_app(b"canonical")
+        with TemporaryDirectory() as folder:
+            result = export_active(
+                app,
+                Path(folder) / "Model.stp",
+                format_name="stp",
+                verify_reimport=False,
+            )
+            self.assertEqual(document.export_calls[0]["format"], "stp")
+            self.assertEqual(result["format"], "stp")
+
     def test_export_versioned_preserves_existing_target(self) -> None:
         app, _ = self._export_app(b"version two")
         with TemporaryDirectory() as folder:

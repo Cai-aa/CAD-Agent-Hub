@@ -164,6 +164,14 @@ _EXPORT_FORMATS = {
     ".dwg": "dwg",
 }
 
+# Long synonyms are accepted from callers for convenience, but CATIA
+# ExportData expects the canonical short names. Older releases such as
+# V5R21 reject "step"/"iges" outright, so normalize every resolved format.
+_EXPORT_FORMAT_ALIASES = {
+    "step": "stp",
+    "iges": "igs",
+}
+
 _EXPORT_POLICIES = ("error", "versioned", "replace")
 _REIMPORT_FORMATS = {"stp", "igs"}
 _EXPORT_GUARD = threading.Lock()
@@ -290,6 +298,8 @@ def export_active(
 ) -> dict[str, Any]:
     document = active_document(app)
     resolved_format = format_name.strip().lower() if format_name else _EXPORT_FORMATS.get(path.suffix.casefold())
+    if resolved_format:
+        resolved_format = _EXPORT_FORMAT_ALIASES.get(resolved_format, resolved_format)
     if not resolved_format:
         raise ContractError(f"unsupported or ambiguous export extension: {path.suffix}")
     policy = require_choice(
