@@ -467,6 +467,47 @@ def catia_add_pocket(
 
 
 @mcp.tool()
+def catia_inspect_edges(
+    body_name: str = "PartBody",
+    source_feature_name: str | None = None,
+    limit: int = 200,
+    request_id: str | None = None,
+) -> dict[str, Any]:
+    """List one-based solid edges in a named body or named source feature."""
+    return _result(
+        "inspect_edges",
+        lambda: executor.inspect_edges(
+            _request_id(request_id), body_name, source_feature_name, limit
+        ),
+    )
+
+
+@mcp.tool()
+def catia_add_edge_fillet(
+    edge_indices: list[int],
+    radius_mm: float,
+    name: str = "EdgeFillet",
+    body_name: str = "PartBody",
+    source_feature_name: str | None = None,
+    propagation: str = "tangency",
+    request_id: str | None = None,
+) -> dict[str, Any]:
+    """Create a native Part Design constant-radius fillet on inspected edge indices."""
+    return _result(
+        "add_edge_fillet",
+        lambda: executor.add_edge_fillet(
+            _request_id(request_id),
+            edge_indices,
+            radius_mm,
+            name,
+            body_name,
+            source_feature_name,
+            propagation,
+        ),
+    )
+
+
+@mcp.tool()
 def catia_create_parametric_part(
     part_type: str,
     parameters: dict[str, Any],

@@ -11,11 +11,13 @@ from catia_mcp.modeling import (
     _body,
     _validate_entities,
     add_components,
+    add_edge_fillet,
     add_pocket,
     capture_view,
     close_active,
     create_parametric_part,
     export_active,
+    inspect_edges,
 )
 
 
@@ -113,6 +115,148 @@ class ModelingContractTests(unittest.TestCase):
         document.app = app
         return app, document
 
+    @staticmethod
+    def _fillet_app(
+        volumes: list[float],
+        edge_count: int = 4,
+        non_solid_edge_count: int = 0,
+    ):
+        class Reference:
+            def __init__(self, index):
+                self.index = index
+                self.DisplayName = f"EdgeReference.{index}"
+
+        total_edge_count = edge_count + non_solid_edge_count
+        references = [Reference(index) for index in range(1, total_edge_count + 1)]
+        selected = [
+            type(
+                "SelectedEdge",
+                (),
+                {
+                    "Name": f"Edge.{index}",
+                    "Type": (
+                        "RectilinearTriDimFeatEdge"
+                        if index <= edge_count
+                        else "RectilinearMonoDimFeatEdge"
+                    ),
+                    "Reference": reference,
+                },
+            )()
+            for index, reference in enumerate(references, start=1)
+        ]
+
+        class Selection:
+            def __init__(self):
+                self.Count2 = 0
+                self.search_calls = []
+                self.clear_calls = 0
+                self.scope = None
+
+            def Clear(self):
+                self.clear_calls += 1
+                self.Count2 = 0
+
+            def Add(self, value):
+                self.scope = value
+
+            def Search(self, query):
+                self.search_calls.append(query)
+                self.Count2 = total_edge_count if query == "Topology.CGMEdge,sel" else 0
+
+            def Item2(self, index):
+                return selected[index - 1]
+
+        class Shapes:
+            Count = 1
+
+            def __init__(self, source):
+                self.source = source
+
+            def Item(self, value):
+                if value in (1, "BlockPad"):
+                    return self.source
+                raise RuntimeError("shape not found")
+
+        source = type("SourceFeature", (), {"Name": "BlockPad"})()
+        body = type(
+            "Body",
+            (),
+            {"Name": "PartBody", "Shapes": Shapes(source)},
+        )()
+
+        class Bodies:
+            Count = 1
+
+            def Item(self, value):
+                return body
+
+        class ObjectsToFillet:
+            def __init__(self, values):
+                self.values = values
+
+            @property
+            def Count(self):
+                return len(self.values)
+
+        class Feature:
+            def __init__(self, first_reference, propagation, radius):
+                self.Name = ""
+                self.EdgePropagation = propagation
+                self.Radius = type("Length", (), {"Value": radius})()
+                self._references = [first_reference]
+                self.ObjectsToFillet = ObjectsToFillet(self._references)
+
+            def AddObjectToFillet(self, reference):
+                self._references.append(reference)
+
+        class ShapeFactory:
+            def AddNewEdgeFilletWithConstantRadius(self, reference, propagation, radius):
+                self.call = (reference, propagation, radius)
+                self.feature = Feature(reference, propagation, radius)
+                return self.feature
+
+        class SpaWorkbench:
+            def __init__(self):
+                self.volumes = iter(volumes)
+
+            def GetMeasurable(self, reference):
+                if reference is body:
+                    return type("BodyMeasurable", (), {"Volume": next(self.volumes)})()
+                return type(
+                    "EdgeMeasurable",
+                    (),
+                    {"GeometryName": "Line", "Length": 10.0 + reference.index},
+                )()
+
+        selection = Selection()
+        spa = SpaWorkbench()
+        shape_factory = ShapeFactory()
+        part = type(
+            "Part",
+            (),
+            {
+                "Bodies": Bodies(),
+                "MainBody": body,
+                "ShapeFactory": shape_factory,
+                "CreateReferenceFromObject": lambda self, value: value,
+                "UpdateObject": lambda self, value: None,
+                "Update": lambda self: None,
+            },
+        )()
+        document = type(
+            "Document",
+            (),
+            {
+                "Name": "FilletProbe.CATPart",
+                "Part": part,
+                "Selection": selection,
+                "GetWorkbench": lambda self, name: spa,
+            },
+        )()
+        documents = type("Documents", (), {"Count": 1})()
+        app = type("App", (), {"Documents": documents, "ActiveDocument": document})()
+        return app, references, part, selection
+
     def test_default_partbody_falls_back_to_localized_main_body(self) -> None:
         main = object()
 
@@ -195,6 +339,66 @@ class ModelingContractTests(unittest.TestCase):
         self.assertEqual(result["status"], "no_material_removed")
         self.assertFalse(result["material_removed"])
         self.assertIn("reverse=True", result["warning"])
+
+    def test_inspect_edges_returns_scoped_one_based_snapshot(self) -> None:
+        app, _, _, selection = self._fillet_app([], edge_count=4)
+
+        result = inspect_edges(app, source_feature_name="BlockPad", limit=2)
+
+        self.assertEqual(result["scope"], {"kind": "feature", "name": "BlockPad"})
+        self.assertEqual(result["matched_edge_count"], 4)
+        self.assertEqual([edge["index"] for edge in result["edges"]], [1, 2])
+        self.assertEqual(result["edges"][0]["measurement"]["length"], 11.0)
+        self.assertTrue(result["truncated"])
+        self.assertEqual(selection.Count2, 0)
+
+    def test_inspect_edges_defaults_to_body_solid_and_filters_sketch_wires(self) -> None:
+        app, _, _, _ = self._fillet_app([], edge_count=4, non_solid_edge_count=2)
+
+        result = inspect_edges(app)
+
+        self.assertEqual(result["scope"]["kind"], "body_current_solid")
+        self.assertEqual(result["raw_search_result_count"], 6)
+        self.assertEqual(result["matched_edge_count"], 4)
+        self.assertEqual(result["filtered_non_solid_edge_count"], 2)
+        self.assertEqual([edge["index"] for edge in result["edges"]], [1, 2, 3, 4])
+
+    def test_add_edge_fillet_creates_native_feature_and_reads_it_back(self) -> None:
+        app, references, part, selection = self._fillet_app([48.0e-6, 47.75e-6])
+
+        result = add_edge_fillet(
+            app,
+            [1, 3],
+            2.5,
+            "CornerRounds",
+            source_feature_name="BlockPad",
+            propagation="minimal",
+        )
+
+        self.assertEqual(part.ShapeFactory.call, (references[0], 0, 2.5))
+        self.assertEqual(part.ShapeFactory.feature._references, [references[0], references[2]])
+        self.assertEqual(result["feature"], "CornerRounds")
+        self.assertEqual(result["type"], "ConstRadEdgeFillet")
+        self.assertEqual(result["selected_edges"][1]["index"], 3)
+        self.assertTrue(result["validation"]["radius_matches_request"])
+        self.assertTrue(result["validation"]["propagation_matches_request"])
+        self.assertTrue(result["validation"]["objects_to_fillet_matches_request"])
+        self.assertTrue(result["validation"]["body_volume_changed"])
+        self.assertAlmostEqual(result["validation"]["volume_change_mm3"], -250.0)
+        self.assertEqual(selection.Count2, 0)
+
+    def test_add_edge_fillet_rejects_duplicate_indices_before_com(self) -> None:
+        with self.assertRaisesRegex(ContractError, "must not contain duplicates"):
+            add_edge_fillet(object(), [1, 1], 2.0)
+
+    def test_add_edge_fillet_rejects_index_outside_scoped_topology(self) -> None:
+        app, _, part, selection = self._fillet_app([], edge_count=2)
+
+        with self.assertRaisesRegex(ContractError, "exceeds CATIA scoped edge count"):
+            add_edge_fillet(app, [3], 2.0)
+
+        self.assertFalse(hasattr(part.ShapeFactory, "call"))
+        self.assertEqual(selection.Count2, 0)
 
     def test_tube_reverses_origin_plane_bore_pocket(self) -> None:
         document = type("Document", (), {"Name": "Tube.CATPart"})()

@@ -10,13 +10,13 @@
 
 ## 已实现范围
 
-- CATPart：草图、Pad、Pocket、参数、材料、更新、保存、导出和模型树检查。
+- CATPart：草图、Pad、Pocket、恒定半径边倒圆、参数、材料、更新、保存、导出和模型树检查。
 - CATProduct：新建装配体、插入零部件和装配结构检查。
 - CATAnalysis：导入零件/装配、工况、Solution、Analysis Set、载荷/约束实体、支撑绑定、Mesh Part、网格规格、CATIA 内部计算、结果图像/数据和 HTML 报告。
 - 原生 GSD 线框/曲面：三维点、开闭 Spline、偏置平面、G0/G1/G2 Connect、
   HybridShapeLoft 截面/引导线/耦合/闭合点、Join、Healing、Boundary、
   Close Surface 和 Thick Surface。
-- 共 53 个固定、带类型的 MCP 工具。
+- 共 55 个固定、带类型的 MCP 工具。
 - 不开放任意 Python、CATScript、Shell 或任意 COM 方法执行。
 - CATIA COM 调用集中到单个 STA 工作线程，支持请求 ID 幂等、忙碌拒绝和文件根目录边界。
 
@@ -59,6 +59,7 @@ CATIA 与 MCP 必须在相同 Windows 用户和相同权限级别下运行。如
 - `catia_health_check`、`catia_connect`、`catia_list_documents`
 - `catia_create_part`、`catia_create_product`
 - `catia_create_sketch`、`catia_add_pad`、`catia_add_pocket`
+- `catia_inspect_edges`、`catia_add_edge_fillet`
 - `catia_create_parametric_part`、`catia_add_components`
 - `catia_list_materials`、`catia_apply_material`
 - `catia_list_parameters`、`catia_set_parameter`
@@ -77,6 +78,21 @@ CATIA，也不会弹出覆盖窗口。需要保留版本时使用 `versioned`；
 `catia_capture_view` 继续只接受 BMP，以保持 CATIA V5 Automation 的稳定兼容。
 工具使用 `catCaptureFormatBMP`（数值 `4`），并在返回 `is_image=true` 前检查
 文件头必须为 `BM`；CATIA 静默生成非图片内容时会返回错误。
+
+### 恒定半径边倒圆
+
+执行倒圆前先调用 `catia_inspect_edges`。工具搜索 `body_name` 的当前三维实体拓扑
+并排除草图线，也可以限定到可选的具名 `source_feature_name`。它返回从 1 开始的
+索引、CATIA 引用显示名和可读取的 SPA 测量值。这些索引只是当前拓扑快照，不是
+永久拓扑 ID；任何上游几何变化后都必须重新检查。
+
+`catia_add_edge_fillet` 使用 `radius_mm`、一个或多个 `edge_indices`，以及
+`propagation="minimal"` 或 `"tangency"` 创建原生 Part Design
+`ConstRadEdgeFillet`。多边输入保持调用顺序，因为选择顺序可能影响 CATIA 的原生
+求解结果。返回值会回读半径、传播模式、`ObjectsToFillet` 数量和倒圆前后实体
+体积；仅有 COM 更新成功不会被表述为完整几何质量证明。
+
+0.3.0 版本暂不开放变半径、面、三切线或曲面倒圆，也不包含倒角工具。
 
 CATIA 已运行时，可执行 `python .\scripts\validate_issue_fixes.py`，创建隔离测试
 零件并同时验证反向 Pocket 的方向/体积和 BMP 文件头。产物写入 `workspace`，
@@ -119,6 +135,7 @@ python -m compileall -q '.\src'
 python '.\scripts\stdio_smoke.py'
 python '.\scripts\probe_environment.py'
 python '.\scripts\probe_live.py'
+python '.\scripts\validate_edge_fillet.py'
 ```
 
 详细兼容性和架构说明见 [docs/compatibility-and-architecture.md](docs/compatibility-and-architecture.md)。

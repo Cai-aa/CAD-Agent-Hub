@@ -9,13 +9,13 @@ Safe overwrite, temporary validation and timeout recovery:
 
 ## Current scope
 
-- Native CATPart sketch, pad, pocket, parameters, materials, update, save, export and inspection.
+- Native CATPart sketch, pad, pocket, constant-radius edge fillet, parameters, materials, update, save, export and inspection.
 - Native GSD wireframe/surface creation: 3D points, closed/open splines, offset planes,
   G0/G1/G2 connect curves, HybridShapeLoft sections/guides/coupling/closing points,
   Join, Healing, Boundary, Close Surface and Thick Surface.
 - Native CATProduct creation and component insertion.
 - Native CATAnalysis creation/import, cases, solutions, sets, entities, supports, mesh parts, mesh specifications, internal compute, result images/data and HTML reports.
-- 53 fixed, typed MCP tools. Arbitrary Python, CATScript, shell and raw COM execution are intentionally not exposed.
+- 55 fixed, typed MCP tools. Arbitrary Python, CATScript, shell and raw COM execution are intentionally not exposed.
 - Dedicated STA worker, serialized COM calls, request-id idempotency and bounded filesystem roots.
 
 The local validation target is CATIA P3 V5-6R2023 B33 at `G:\Program Files\Dassault Systemes\B33`. The implementation discovers installed V5 environments instead of hard-coding that location.
@@ -55,6 +55,7 @@ python '.\scripts\stdio_smoke.py'
 python '.\scripts\probe_environment.py'
 python '.\scripts\probe_live.py'
 python '.\scripts\validate_issue_fixes.py'
+python '.\scripts\validate_edge_fillet.py'
 ```
 
 Use `probe_live.py --start-if-missing` only when starting the selected CATIA environment is intended.
@@ -85,3 +86,22 @@ mm^3, `removed_volume_mm3`, and `material_removed`. A zero-volume change is retu
 `catia_capture_view` intentionally remains BMP-only for stable CATIA V5 Automation
 compatibility. It uses `catCaptureFormatBMP` (numeric value `4`) and verifies the
 `BM` file signature before returning `is_image=true`; a non-image payload is an error.
+
+## Constant-radius edge fillet
+
+Call `catia_inspect_edges` immediately before filleting. It searches the current
+three-dimensional solid topology of `body_name`, filtering out sketch-wire edges, or
+it can scope the search to an optional named `source_feature_name`. It returns
+one-based indices, CATIA reference display names and available SPA measurements.
+Those indices are a snapshot, not persistent topology identifiers; reacquire them
+after any upstream geometry change.
+
+`catia_add_edge_fillet` creates a native Part Design `ConstRadEdgeFillet` with
+`radius_mm`, one or more inspected `edge_indices`, and `propagation="minimal"` or
+`"tangency"`. Input order is preserved because multi-edge fillet order can affect the
+native result. The response reads back the radius, propagation, `ObjectsToFillet`
+count and body volume before/after; an update-only result is not represented as full
+geometric-quality proof.
+
+Version 0.3.0 does not expose variable-radius, face, tritangent or surface fillets,
+and it does not add chamfer support.

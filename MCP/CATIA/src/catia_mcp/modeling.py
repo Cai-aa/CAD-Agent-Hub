@@ -12,6 +12,7 @@ from .contracts import (
     ContractError,
     require_choice,
     require_finite,
+    require_index,
     require_positive,
     require_safe_name,
     require_text,
@@ -19,6 +20,18 @@ from .contracts import (
 
 
 CAT_CAPTURE_FORMAT_BMP = 4
+CAT_MINIMAL_FILLET_EDGE_PROPAGATION = 0
+CAT_TANGENCY_FILLET_EDGE_PROPAGATION = 1
+_FILLET_PROPAGATION_CODES = {
+    "minimal": CAT_MINIMAL_FILLET_EDGE_PROPAGATION,
+    "tangency": CAT_TANGENCY_FILLET_EDGE_PROPAGATION,
+}
+_EDGE_SEARCH_QUERIES = (
+    "Topology.CGMEdge,sel",
+    "Type=Topology.CGMEdge,sel",
+    "Topology.Edge,sel",
+    "Type=Topology.Edge,sel",
+)
 
 
 def _collection_items(collection: Any, limit: int = 500) -> Iterable[Any]:
@@ -31,6 +44,14 @@ def _safe_attr(obj: Any, name: str, default: Any = None) -> Any:
     try:
         member = getattr(obj, name)
         return member() if callable(member) else member
+    except Exception:
+        return default
+
+
+def _safe_property(obj: Any, name: str, default: Any = None) -> Any:
+    """Read a COM property without invoking dispatch objects that are callable in pywin32."""
+    try:
+        return getattr(obj, name)
     except Exception:
         return default
 
@@ -85,6 +106,17 @@ def _sketch(part: Any, body_name: str, sketch_name: str) -> Any:
         return body.Sketches.Item(sketch_name)
     except Exception as exc:
         raise RuntimeError(f"sketch not found in {body.Name}: {sketch_name}") from exc
+
+
+def _shape(body: Any, shape_name: str) -> Any:
+    safe_name = require_safe_name(shape_name, "source_feature_name")
+    try:
+        return body.Shapes.Item(safe_name)
+    except Exception as exc:
+        for shape in _collection_items(body.Shapes):
+            if str(_safe_attr(shape, "Name", "")).casefold() == safe_name.casefold():
+                return shape
+        raise RuntimeError(f"feature not found in {body.Name}: {safe_name}") from exc
 
 
 def _plane(part: Any, plane_name: str) -> Any:
@@ -560,6 +592,302 @@ def add_pocket(
     if warning:
         result["warning"] = warning
     return result
+
+
+def _validated_edge_indices(edge_indices: list[int]) -> list[int]:
+    if not isinstance(edge_indices, list) or not 1 <= len(edge_indices) <= 100:
+        raise ContractError("edge_indices must contain 1..100 one-based edge indices")
+    result = [
+        require_index(value, f"edge_indices[{index}]")
+        for index, value in enumerate(edge_indices)
+    ]
+    if len(set(result)) != len(result):
+        raise ContractError("edge_indices must not contain duplicates")
+    return result
+
+
+def _edge_scope(part: Any, body_name: str, source_feature_name: str | None) -> tuple[Any, Any, str, str]:
+    body = _body(part, body_name)
+    if source_feature_name is None:
+        return body, body, "body_current_solid", str(_safe_attr(body, "Name", body_name))
+    feature = _shape(body, source_feature_name)
+    return body, feature, "feature", str(_safe_attr(feature, "Name", source_feature_name))
+
+
+def _selected_edge_reference(part: Any, selected: Any) -> Any:
+    reference = _safe_property(selected, "Reference", None)
+    if reference is not None:
+        return reference
+    value = _safe_property(selected, "Value", None)
+    if value is None:
+        raise RuntimeError("CATIA edge search returned an item without a usable Reference or Value")
+    return part.CreateReferenceFromObject(value)
+
+
+def _populate_edge_selection(selection: Any, scope: Any) -> tuple[str, int, list[Any]]:
+    rejected_queries: list[str] = []
+    for query in _EDGE_SEARCH_QUERIES:
+        selection.Clear()
+        selection.Add(scope)
+        try:
+            selection.Search(query)
+        except Exception:
+            rejected_queries.append(query)
+            continue
+        raw_count = int(selection.Count2)
+        solid_edges = []
+        for raw_index in range(1, raw_count + 1):
+            selected = selection.Item2(raw_index)
+            selected_type = str(_safe_attr(selected, "Type", "")).casefold()
+            if "monodim" not in selected_type:
+                solid_edges.append(selected)
+        if solid_edges:
+            return query, raw_count, solid_edges
+    if len(rejected_queries) == len(_EDGE_SEARCH_QUERIES):
+        raise RuntimeError(
+            "CATIA rejected all supported topological-edge search queries: "
+            + ", ".join(rejected_queries)
+        )
+    raise RuntimeError(
+        "CATIA found no three-dimensional topological edges in the requested body or feature scope"
+    )
+
+
+def _search_scoped_edges(
+    document: Any,
+    part: Any,
+    scope: Any,
+    requested_indices: list[int],
+) -> tuple[str, int, int, list[dict[str, Any]]]:
+    selection = document.Selection
+    selection.Clear()
+    try:
+        query_used, raw_count, selected_edges = _populate_edge_selection(selection, scope)
+        matched = len(selected_edges)
+        highest = max(requested_indices)
+        if highest > matched:
+            raise ContractError(
+                f"edge index {highest} exceeds CATIA scoped edge count: {matched}"
+            )
+
+        edges: list[dict[str, Any]] = []
+        for index in requested_indices:
+            selected = selected_edges[index - 1]
+            reference = _selected_edge_reference(part, selected)
+            edges.append(
+                {
+                    "index": index,
+                    "name": str(_safe_attr(selected, "Name", "")),
+                    "type": str(_safe_attr(selected, "Type", "")),
+                    "reference_display_name": str(_safe_attr(reference, "DisplayName", "")),
+                    "reference": reference,
+                }
+            )
+        return query_used, raw_count, matched, edges
+    finally:
+        selection.Clear()
+
+
+def _edge_measurement(document: Any, reference: Any) -> dict[str, Any]:
+    measurable = document.GetWorkbench("SPAWorkbench").GetMeasurable(reference)
+    result: dict[str, Any] = {}
+    for source, target in (
+        ("GeometryName", "geometry_type"),
+        ("Length", "length"),
+        ("Radius", "radius"),
+    ):
+        try:
+            value = getattr(measurable, source)
+            result[target] = value() if callable(value) else value
+        except Exception:
+            pass
+    return result
+
+
+def inspect_edges(
+    app: Any,
+    body_name: str = "PartBody",
+    source_feature_name: str | None = None,
+    limit: int = 200,
+) -> dict[str, Any]:
+    if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 1000:
+        raise ContractError("limit must be an integer between 1 and 1000")
+    document = active_part_document(app)
+    part = document.Part
+    body, scope, scope_kind, scope_name = _edge_scope(part, body_name, source_feature_name)
+
+    selection = document.Selection
+    selection.Clear()
+    try:
+        query_used, raw_count, selected_edges = _populate_edge_selection(selection, scope)
+        matched = len(selected_edges)
+
+        edges: list[dict[str, Any]] = []
+        for index in range(1, min(matched, limit) + 1):
+            selected = selected_edges[index - 1]
+            reference = _selected_edge_reference(part, selected)
+            row: dict[str, Any] = {
+                "index": index,
+                "name": str(_safe_attr(selected, "Name", "")),
+                "type": str(_safe_attr(selected, "Type", "")),
+                "reference_display_name": str(_safe_attr(reference, "DisplayName", "")),
+            }
+            try:
+                row["measurement"] = _edge_measurement(document, reference)
+            except Exception as exc:
+                row["measurement_error"] = f"{type(exc).__name__}: {exc}"
+            edges.append(row)
+    finally:
+        selection.Clear()
+
+    return {
+        "document": document.Name,
+        "body": str(_safe_attr(body, "Name", body_name)),
+        "scope": {"kind": scope_kind, "name": scope_name},
+        "search_query": query_used,
+        "raw_search_result_count": raw_count,
+        "matched_edge_count": matched,
+        "filtered_non_solid_edge_count": raw_count - matched,
+        "edges": edges,
+        "truncated": matched > len(edges),
+        "measurement_unit_basis": "CATIA document units",
+        "topology_warning": (
+            "Edge indices are a snapshot of the current scoped topology. Re-run "
+            "catia_inspect_edges after any upstream geometry change."
+        ),
+    }
+
+
+def add_edge_fillet(
+    app: Any,
+    edge_indices: list[int],
+    radius_mm: float,
+    name: str = "EdgeFillet",
+    body_name: str = "PartBody",
+    source_feature_name: str | None = None,
+    propagation: str = "tangency",
+) -> dict[str, Any]:
+    indices = _validated_edge_indices(edge_indices)
+    radius = require_positive(radius_mm, "radius_mm")
+    feature_name = require_safe_name(name)
+    propagation_name = require_choice(
+        propagation, "propagation", tuple(_FILLET_PROPAGATION_CODES)
+    )
+    propagation_code = _FILLET_PROPAGATION_CODES[propagation_name]
+
+    document = active_part_document(app)
+    part = document.Part
+    body, scope, scope_kind, scope_name = _edge_scope(part, body_name, source_feature_name)
+    query_used, raw_count, matched, edges = _search_scoped_edges(
+        document, part, scope, indices
+    )
+    references = [edge["reference"] for edge in edges]
+    volume_before_mm3, volume_before_error = _body_volume(document, part, body)
+
+    shape_factory = part.ShapeFactory
+    create = getattr(shape_factory, "AddNewEdgeFilletWithConstantRadius", None)
+    if not callable(create):
+        raise RuntimeError(
+            "installed CATIA release does not expose AddNewEdgeFilletWithConstantRadius"
+        )
+
+    part.InWorkObject = body
+    feature = create(references[0], propagation_code, radius)
+    feature.Name = feature_name
+    for reference in references[1:]:
+        feature.AddObjectToFillet(reference)
+    feature.EdgePropagation = propagation_code
+    part.UpdateObject(feature)
+    part.Update()
+
+    radius_object = _safe_property(feature, "Radius", None)
+    radius_readback = _safe_attr(radius_object, "Value", None)
+    if isinstance(radius_readback, (int, float)) and not isinstance(radius_readback, bool):
+        radius_readback = float(radius_readback)
+    else:
+        radius_readback = None
+    objects = _safe_property(feature, "ObjectsToFillet", None)
+    objects_to_fillet_count = _safe_attr(objects, "Count", None)
+    if isinstance(objects_to_fillet_count, (int, float)) and not isinstance(objects_to_fillet_count, bool):
+        objects_to_fillet_count = int(objects_to_fillet_count)
+    else:
+        objects_to_fillet_count = None
+    propagation_readback = _safe_attr(feature, "EdgePropagation", None)
+    if isinstance(propagation_readback, (int, float)) and not isinstance(propagation_readback, bool):
+        propagation_readback = int(propagation_readback)
+    else:
+        propagation_readback = None
+
+    volume_after_mm3, volume_after_error = _body_volume(document, part, body)
+    volume_change_mm3: float | None = None
+    body_volume_changed: bool | None = None
+    if volume_before_mm3 is not None and volume_after_mm3 is not None:
+        volume_change_mm3 = volume_after_mm3 - volume_before_mm3
+        tolerance = max(1e-6, abs(volume_before_mm3) * 1e-9)
+        body_volume_changed = abs(volume_change_mm3) > tolerance
+
+    warnings: list[str] = []
+    if volume_before_error or volume_after_error:
+        warnings.append("body volume measurement was unavailable; inspect the native feature result")
+    elif body_volume_changed is False:
+        warnings.append("native feature updated but measurable body volume did not change")
+    if radius_readback is None:
+        warnings.append("fillet radius could not be read back from the native feature")
+    if objects_to_fillet_count is None:
+        warnings.append("ObjectsToFillet count could not be read back from the native feature")
+
+    public_edges = [
+        {key: value for key, value in edge.items() if key != "reference"}
+        for edge in edges
+    ]
+    return {
+        "document": document.Name,
+        "body": str(_safe_attr(body, "Name", body_name)),
+        "feature": str(_safe_attr(feature, "Name", feature_name)),
+        "type": "ConstRadEdgeFillet",
+        "radius_mm": radius,
+        "propagation": propagation_name,
+        "propagation_code": propagation_code,
+        "scope": {"kind": scope_kind, "name": scope_name},
+        "search_query": query_used,
+        "raw_search_result_count": raw_count,
+        "matched_edge_count": matched,
+        "filtered_non_solid_edge_count": raw_count - matched,
+        "selected_edges": public_edges,
+        "validation": {
+            "part_update_succeeded": True,
+            "radius_readback_mm": radius_readback,
+            "radius_matches_request": (
+                math.isclose(radius_readback, radius, rel_tol=0.0, abs_tol=1e-9)
+                if radius_readback is not None
+                else None
+            ),
+            "propagation_readback_code": propagation_readback,
+            "propagation_matches_request": (
+                propagation_readback == propagation_code
+                if propagation_readback is not None
+                else None
+            ),
+            "objects_to_fillet_count": objects_to_fillet_count,
+            "objects_to_fillet_matches_request": (
+                objects_to_fillet_count == len(indices)
+                if objects_to_fillet_count is not None
+                else None
+            ),
+            "volume_before_mm3": volume_before_mm3,
+            "volume_after_mm3": volume_after_mm3,
+            "volume_change_mm3": volume_change_mm3,
+            "body_volume_changed": body_volume_changed,
+            "volume_before_error": volume_before_error,
+            "volume_after_error": volume_after_error,
+        },
+        "status": "created_and_updated",
+        "warnings": warnings,
+        "topology_warning": (
+            "Edge indices are valid only for the inspected topology state; reacquire "
+            "them after upstream geometry changes."
+        ),
+    }
 
 
 def create_parametric_part(app: Any, part_type: str, parameters: dict[str, Any], title: str) -> dict[str, Any]:

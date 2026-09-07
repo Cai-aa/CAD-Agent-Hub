@@ -11,6 +11,12 @@ class ServerContractTests(unittest.TestCase):
     def _tools():
         return {tool.name: tool for tool in asyncio.run(mcp.list_tools())}
 
+    @staticmethod
+    def _schema(tool):
+        if hasattr(tool, "input_schema"):
+            return tool.input_schema
+        return tool.inputSchema
+
     def test_required_tool_surface(self) -> None:
         tools = set(self._tools())
         required = {
@@ -18,6 +24,8 @@ class ServerContractTests(unittest.TestCase):
             "catia_connect",
             "catia_create_sketch",
             "catia_add_pad",
+            "catia_inspect_edges",
+            "catia_add_edge_fillet",
             "catia_create_analysis_document",
             "catia_add_analysis_mesh_part",
             "catia_add_analysis_entity",
@@ -39,17 +47,25 @@ class ServerContractTests(unittest.TestCase):
             "catia_check_surface_quality",
         }
         self.assertTrue(required.issubset(tools))
-        self.assertGreaterEqual(len(tools), 53)
+        self.assertGreaterEqual(len(tools), 55)
 
     def test_export_tool_defaults_to_non_overwriting_policy(self) -> None:
-        schema = self._tools()["catia_export_active"].input_schema
+        schema = self._schema(self._tools()["catia_export_active"])
         properties = schema["properties"]
         self.assertEqual(properties["overwrite_policy"]["default"], "error")
         self.assertTrue(properties["verify_reimport"]["default"])
 
     def test_pocket_tool_exposes_backward_compatible_reverse_flag(self) -> None:
-        schema = self._tools()["catia_add_pocket"].input_schema
+        schema = self._schema(self._tools()["catia_add_pocket"])
         self.assertFalse(schema["properties"]["reverse"]["default"])
+
+    def test_edge_fillet_tool_exposes_typed_selection_and_propagation(self) -> None:
+        schema = self._schema(self._tools()["catia_add_edge_fillet"])
+        properties = schema["properties"]
+        self.assertIn("edge_indices", schema["required"])
+        self.assertIn("radius_mm", schema["required"])
+        self.assertEqual(properties["edge_indices"]["items"]["type"], "integer")
+        self.assertEqual(properties["propagation"]["default"], "tangency")
 
 
 if __name__ == "__main__":

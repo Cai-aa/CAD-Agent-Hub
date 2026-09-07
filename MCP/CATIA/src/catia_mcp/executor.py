@@ -228,6 +228,42 @@ class CatiaExecutor:
             lambda app: modeling.add_pocket(app, sketch_name, length_mm, name, body_name, reverse),
         )
 
+    def inspect_edges(
+        self,
+        request_id: str,
+        body_name: str,
+        source_feature_name: str | None,
+        limit: int,
+    ) -> dict[str, Any]:
+        return self._run(
+            request_id,
+            lambda app: modeling.inspect_edges(app, body_name, source_feature_name, limit),
+            mutating=False,
+        )
+
+    def add_edge_fillet(
+        self,
+        request_id: str,
+        edge_indices: list[int],
+        radius_mm: float,
+        name: str,
+        body_name: str,
+        source_feature_name: str | None,
+        propagation: str,
+    ) -> dict[str, Any]:
+        return self._run(
+            request_id,
+            lambda app: modeling.add_edge_fillet(
+                app,
+                edge_indices,
+                radius_mm,
+                name,
+                body_name,
+                source_feature_name,
+                propagation,
+            ),
+        )
+
     def create_parametric_part(
         self,
         request_id: str,
