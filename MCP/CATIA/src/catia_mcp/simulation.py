@@ -689,7 +689,14 @@ def build_report(
     folder.mkdir(parents=True, exist_ok=True)
     post = model.PostManager
     post.AddExistingCaseForReport(case)
-    post.BuildReport(str(folder), require_text(title, "title", max_length=256), bool(add_created_images))
+    # BuildReport expects a CATIA Folder object rather than a bare path string.
+    # Older releases such as V5R21 reject a string with a type conversion error.
+    file_system = app.FileSystem
+    if file_system.FolderExists(str(folder)):
+        report_folder = file_system.GetFolder(str(folder))
+    else:
+        report_folder = file_system.CreateFolder(str(folder))
+    post.BuildReport(report_folder, require_text(title, "title", max_length=256), bool(add_created_images))
     artifacts = sorted(str(path) for path in folder.rglob("*") if path.is_file())
     return {
         "document": document.Name,

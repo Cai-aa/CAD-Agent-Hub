@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
 
-from catia_mcp.simulation import BUILTIN_ANALYSIS_CATALOG, bind_mesh_support_from_search, compute_case
+from catia_mcp.simulation import BUILTIN_ANALYSIS_CATALOG, bind_mesh_support_from_search, build_report, compute_case
 
 
 class Collection:
@@ -131,6 +133,51 @@ class SimulationTests(unittest.TestCase):
         bind_mesh_support_from_search(app, "Source.CATPart", "Topology.CGMFace,sel")
         self.assertTrue(calls.get("geometry_reference"))
         self.assertEqual(calls.get("support_reference"), "GEOMETRY_REF")
+
+    def test_build_report_passes_a_folder_object(self) -> None:
+        calls: dict = {}
+
+        class Post:
+            def AddExistingCaseForReport(self, case):
+                calls["case"] = case
+
+            def BuildReport(self, folder, title, add_images):
+                calls["folder"] = folder
+                calls["title"] = title
+                calls["add_images"] = add_images
+
+        class FileSystem:
+            def FolderExists(self, path):
+                calls["checked_path"] = path
+                return False
+
+            def CreateFolder(self, path):
+                return "FOLDER_OBJECT"
+
+        class Model:
+            PostManager = Post()
+            AnalysisCases = Collection([type("Case", (), {"Name": "Case.1"})()])
+
+        manager = type("Manager", (), {"AnalysisModels": Collection([Model()])})()
+        document = type("Document", (), {"Name": "Test.CATAnalysis", "Analysis": manager})()
+        app = type(
+            "App",
+            (),
+            {
+                "Documents": type("Docs", (), {"Count": 1})(),
+                "ActiveDocument": document,
+                "FileSystem": FileSystem(),
+            },
+        )()
+
+        with tempfile.TemporaryDirectory() as folder:
+            result = build_report(
+                app, Path(folder), "Report Title", model_index=1, case_index=1, add_created_images=True
+            )
+        self.assertEqual(calls.get("folder"), "FOLDER_OBJECT")
+        self.assertEqual(calls.get("title"), "Report Title")
+        self.assertTrue(calls.get("add_images"))
+        self.assertEqual(result["artifact_count"], 0)
 
 
 if __name__ == "__main__":
