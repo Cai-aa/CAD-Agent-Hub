@@ -500,7 +500,29 @@ def bind_mesh_support_from_search(
         if index > count:
             raise ContractError(f"selection_index exceeds CATIA search result count: {count}")
         selected = selection.Item2(index).Value
-        support_reference = manager.CreateReferenceFromGeometry(source.Product, selected)
+        # Mesh supports expect a feature-style reference created on the source
+        # Part (for example the main Body). AnalysisManager.CreateReferenceFromGeometry
+        # rejects feature objects on releases such as V5R21, so the feature
+        # reference is attempted first and the geometry reference is kept as a
+        # fallback for objects that only exist as pure geometry (for example a
+        # Face selected through a Topology query).
+        reference_errors: list[str] = []
+        support_reference = None
+        source_part = getattr(source, "Part", None)
+        if source_part is not None:
+            try:
+                support_reference = source_part.CreateReferenceFromObject(selected)
+            except Exception as exc:
+                reference_errors.append(f"CreateReferenceFromObject: {type(exc).__name__}: {exc}")
+        if support_reference is None:
+            try:
+                support_reference = manager.CreateReferenceFromGeometry(source.Product, selected)
+            except Exception as exc:
+                reference_errors.append(f"CreateReferenceFromGeometry: {type(exc).__name__}: {exc}")
+                raise RuntimeError(
+                    "could not create an Analysis mesh support reference from the selected object: "
+                    + " | ".join(reference_errors)
+                ) from exc
         mesh_part.AddSupportFromReference(source.Product, support_reference)
     finally:
         selection.Clear()
