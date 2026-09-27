@@ -27,10 +27,10 @@
 - 目标基线：B28 / V5-6R2018 及以上。
 - 本机验证版本：B33 / V5-6R2023。
 - 更高版本继续保留完整工具面；服务器通过本机 TypeLib 和对象方法探测，只对实际缺失的操作做能力门控。
-- B28 以前的版本按最佳努力维护；本机 V5R21/B21 已完成系统性适配与实机验证（见下），使用时显式设置 `CATIA_MCP_ALLOW_LEGACY=true`。
+- B28 以前的版本按最佳努力维护；V5R21/B21 已完成系统性适配与实机验证（见下），使用时显式设置 `CATIA_MCP_ALLOW_LEGACY=true`。
 - GPS/GAS/EST 等模块的 Analysis late type 不被压缩成最低版本公共子集；可通过通用但受控的 Set、Entity、Value、Support、Mesh、Image 接口使用当前版本已安装的高级能力。
 
-### V5R21（B21）兼容状态（本机实测）
+### V5R21（B21）兼容状态（实机验证）
 
 对 CATIA P3 V5R21 B21（SP6+HF5）完成了进一步适配：55 个工具全部实机探测，
 基础建模、边倒圆、GSD 曲面全链、材料、装配、BMP 截图、导出
@@ -43,7 +43,7 @@ join 角度模式降级、被引用零件关闭验证、mesh/entity 支撑引用
 的 "Legacy release notes" 章节。
 
 - 复现能力探测：`python .\scripts\probe_release_capabilities.py`
-- 复现分析全链：`python .\scripts\validate_v5r21_analysis_chain.py`
+- 复现分析全链：`python .\scripts\validate_analysis_chain.py`
 
 安装目录中存在 DLL 或 TypeLib 不等于 GPS/GAS/EST 许可证可用。第一次真实许可证检查是创建并导入 `CATAnalysis` 文档。
 

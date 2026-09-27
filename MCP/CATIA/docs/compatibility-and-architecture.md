@@ -83,7 +83,7 @@ The complete tool surface was probed live on CATIA P3 V5R21 B21 (SP6+HF5) with
 and solved through pure Automation. Behaviours below differ from the B28+
 baseline; the "adapted" items are implemented in the server and covered by unit
 tests. Run `scripts/probe_release_capabilities.py` on any machine to re-probe,
-and `scripts/validate_v5r21_analysis_chain.py` to reproduce the analysis chain.
+and `scripts/validate_analysis_chain.py` to reproduce the analysis chain.
 
 ### Adapted behaviours
 
@@ -172,6 +172,6 @@ and `scripts/validate_v5r21_analysis_chain.py` to reproduce the analysis chain.
    trigger `Singularity detected (pivot too small)` - a single fully clamped
    face is sufficient.
 
-The script `scripts/validate_v5r21_analysis_chain.py` performs all of these
+The script `scripts/validate_analysis_chain.py` performs all of these
 steps and writes the part, the solved analysis, the report and the images into
 `workspace/analysis_validation_<stamp>/`.
