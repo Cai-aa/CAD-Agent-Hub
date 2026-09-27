@@ -1184,4 +1184,32 @@ def close_active(
         document.Close()
     finally:
         app.DisplayFileAlerts = previous_alerts
-    return {"document": name, "closed": True, "saved_before_close": save or was_saved, "discarded": discard_unsaved and not was_saved}
+
+    # Some releases (for example V5R21) silently ignore Close() on a document
+    # still referenced by an open CATProduct: the call returns without error
+    # but the document stays in the collection. Verify the actual state and
+    # report the truth instead of a fabricated success.
+    close_verified: bool | None = None
+    try:
+        still_open = any(
+            str(_safe_attr(app.Documents.Item(index), "Name", "")).casefold()
+            == str(name).casefold()
+            for index in range(1, int(app.Documents.Count) + 1)
+        )
+        close_verified = not still_open
+    except Exception:
+        close_verified = None
+    if close_verified is False:
+        raise RuntimeError(
+            f"CATIA did not close {name} although Close() returned without error. "
+            "On some releases (for example V5R21) a document referenced by an open "
+            "CATProduct cannot be closed before its assemblies. Close the referencing "
+            "assembly first, or keep the part open and retry later."
+        )
+    return {
+        "document": name,
+        "closed": True,
+        "saved_before_close": save or was_saved,
+        "discarded": discard_unsaved and not was_saved,
+        "close_verified": close_verified,
+    }
