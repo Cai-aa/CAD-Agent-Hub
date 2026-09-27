@@ -570,11 +570,46 @@ def bind_entity_support_from_search(
         index = require_index(selection_index, "selection_index")
         if index > count:
             raise ContractError(f"selection_index exceeds CATIA search result count: {count}")
-        selected = selection.Item2(index).Value
+        item = selection.Item2(index)
+        selected = item.Value
         product = source.Product
-        context_reference = manager.CreateReferenceFromObject(product)
-        support_reference = manager.CreateReferenceFromGeometry(product, selected)
-        entity.AddSupportFromReference(context_reference, support_reference)
+        # Preferred route (documented workflow, and the only route that works
+        # on releases such as V5R21): build a named reference from the
+        # selection display name - "Selection_RSur:(Face:(...))" - on the
+        # source Part, then bind it from the product. The legacy
+        # CreateReferenceFromObject/CreateReferenceFromGeometry +
+        # AddSupportFromReference combination rejects the selection value on
+        # V5R21, so it is kept only as a fallback.
+        reference_errors: list[str] = []
+        bound = False
+        display_name = None
+        try:
+            reference = getattr(item, "Reference", None)
+            if reference is not None:
+                display_name = str(reference.DisplayName)
+        except Exception as exc:
+            reference_errors.append(f"Reference.DisplayName: {type(exc).__name__}: {exc}")
+        source_part = getattr(source, "Part", None)
+        if display_name and source_part is not None:
+            try:
+                named_reference = source_part.CreateReferenceFromName(display_name)
+                entity.AddSupportFromProduct(product, named_reference)
+                bound = True
+            except Exception as exc:
+                reference_errors.append(f"AddSupportFromProduct: {type(exc).__name__}: {exc}")
+        if not bound:
+            try:
+                context_reference = manager.CreateReferenceFromObject(product)
+                support_reference = manager.CreateReferenceFromGeometry(product, selected)
+                entity.AddSupportFromReference(context_reference, support_reference)
+                bound = True
+            except Exception as exc:
+                reference_errors.append(f"AddSupportFromReference: {type(exc).__name__}: {exc}")
+        if not bound:
+            raise RuntimeError(
+                "could not bind the analysis entity support from the selected object: "
+                + " | ".join(reference_errors)
+            )
     finally:
         selection.Clear()
     return {
