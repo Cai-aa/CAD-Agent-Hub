@@ -115,7 +115,11 @@ class CatiaSession:
                 return win32com.client.GetActiveObject(progid)
             except Exception as exc:
                 errors.append(f"{progid}: {exc}")
-        raise CatiaUnavailable("No CATIA Automation object is published in this process ROT. " + " | ".join(errors))
+        raise CatiaUnavailable(
+            "【CATIA 桌面端未运行】当前 Windows 进程 ROT (Running Object Table) 中未检测到 CATIA 活动实例。"
+            "请先在桌面启动 CATIA V5/V6 客户端软件，或者调用 catia_connect(start_if_missing=True) 尝试自动唤起。"
+            f" (底层排查信息: {' | '.join(errors)})"
+        )
 
     def _selected_installation(self) -> CatiaInstallation | None:
         return choose_installation(self.settings, discover_installations(self.settings))

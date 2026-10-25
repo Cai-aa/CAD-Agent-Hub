@@ -541,7 +541,15 @@ def create_fill(
             )
     for constraint_name in constraint_names:
         fill.AppendConstraint(_reference(part, constraint_name))
-    fill.AdvancedTolerantMode = 2
+    advanced_tolerant_mode: int | None = None
+    advanced_tolerant_mode_error: str | None = None
+    try:
+        fill.AdvancedTolerantMode = 2
+        advanced_tolerant_mode = 2
+    except Exception as exc:
+        # Some releases (for example V5R21) expose the property but reject the
+        # assignment. The native default tolerant mode is then used instead.
+        advanced_tolerant_mode_error = f"{type(exc).__name__}: {exc}"
     _append(part, hybrid_body, fill, name)
     part.Update()
     return {
@@ -552,6 +560,8 @@ def create_fill(
         "supports": normalized_supports,
         "continuities": [value.upper() for value in continuity_names],
         "constraints": constraint_names,
+        "advanced_tolerant_mode": advanced_tolerant_mode,
+        "advanced_tolerant_mode_error": advanced_tolerant_mode_error,
     }
 
 
@@ -587,9 +597,45 @@ def join_surfaces(
     join.SetManifold(bool(manifold))
     join.SetSimplify(bool(simplify))
     join.SetDeviation(tolerance)
-    join.SetAngularToleranceMode(True)
-    join.SetAngularTolerance(angular)
-    _append(part, hybrid_body, join, name)
+    angular_mode_enabled = False
+    angular_note: str | None = None
+    try:
+        join.SetAngularToleranceMode(True)
+        angular_mode_enabled = True
+    except Exception as exc:
+        angular_note = f"angular tolerance mode could not be enabled: {type(exc).__name__}: {exc}"
+    try:
+        join.SetAngularTolerance(angular)
+    except Exception as exc:
+        note = f"angular tolerance could not be set: {type(exc).__name__}: {exc}"
+        angular_note = f"{angular_note + '; ' if angular_note else ''}{note}"
+
+    join.Name = require_safe_name(name)
+    hybrid_body.AppendHybridShape(join)
+    part.InWorkObject = join
+    try:
+        part.UpdateObject(join)
+    except Exception as update_error:
+        if not angular_mode_enabled:
+            raise
+        # Some releases (for example V5R21) accept SetAngularToleranceMode(True)
+        # but cannot solve the join with the mode enabled. Retry without it so
+        # that the join still succeeds with the release default behaviour.
+        try:
+            join.SetAngularToleranceMode(False)
+            angular_mode_enabled = False
+            part.UpdateObject(join)
+        except Exception as retry_error:
+            raise RuntimeError(
+                "join update failed with angular tolerance mode enabled "
+                f"({type(update_error).__name__}: {update_error}); "
+                "retry without the mode also failed "
+                f"({type(retry_error).__name__}: {retry_error})"
+            ) from retry_error
+        angular_note = (
+            "angular tolerance mode was rejected by the solver on this release; "
+            f"the join was recomputed without it ({type(update_error).__name__}: {update_error})"
+        )
     part.Update()
     return {
         "document": document.Name,
@@ -601,6 +647,8 @@ def join_surfaces(
         "connex": bool(connex),
         "manifold": bool(manifold),
         "simplify": bool(simplify),
+        "angular_tolerance_mode": angular_mode_enabled,
+        "angular_tolerance_note": angular_note,
     }
 
 

@@ -35,7 +35,16 @@ def _request_id(value: str | None) -> str:
 def _result(operation: str, function: Callable[[], dict[str, Any]]) -> dict[str, Any]:
     try:
         return {"operation": operation, "result": function()}
-    except (ContractError, CatiaUnavailable, RuntimeError, TimeoutError) as exc:
+    except CatiaUnavailable as exc:
+        return {
+            "operation": operation,
+            "error": {
+                "message": str(exc),
+                "recoverable": False,
+                "suggestion": "请启动 CATIA 客户端软件后再试，或执行 catia_connect(start_if_missing=True)。"
+            }
+        }
+    except (ContractError, RuntimeError, TimeoutError) as exc:
         return {"operation": operation, "error": {"message": str(exc), "recoverable": True}}
     except Exception as exc:
         return {

@@ -500,7 +500,29 @@ def bind_mesh_support_from_search(
         if index > count:
             raise ContractError(f"selection_index exceeds CATIA search result count: {count}")
         selected = selection.Item2(index).Value
-        support_reference = manager.CreateReferenceFromGeometry(source.Product, selected)
+        # Mesh supports expect a feature-style reference created on the source
+        # Part (for example the main Body). AnalysisManager.CreateReferenceFromGeometry
+        # rejects feature objects on releases such as V5R21, so the feature
+        # reference is attempted first and the geometry reference is kept as a
+        # fallback for objects that only exist as pure geometry (for example a
+        # Face selected through a Topology query).
+        reference_errors: list[str] = []
+        support_reference = None
+        source_part = getattr(source, "Part", None)
+        if source_part is not None:
+            try:
+                support_reference = source_part.CreateReferenceFromObject(selected)
+            except Exception as exc:
+                reference_errors.append(f"CreateReferenceFromObject: {type(exc).__name__}: {exc}")
+        if support_reference is None:
+            try:
+                support_reference = manager.CreateReferenceFromGeometry(source.Product, selected)
+            except Exception as exc:
+                reference_errors.append(f"CreateReferenceFromGeometry: {type(exc).__name__}: {exc}")
+                raise RuntimeError(
+                    "could not create an Analysis mesh support reference from the selected object: "
+                    + " | ".join(reference_errors)
+                ) from exc
         mesh_part.AddSupportFromReference(source.Product, support_reference)
     finally:
         selection.Clear()
@@ -548,11 +570,46 @@ def bind_entity_support_from_search(
         index = require_index(selection_index, "selection_index")
         if index > count:
             raise ContractError(f"selection_index exceeds CATIA search result count: {count}")
-        selected = selection.Item2(index).Value
+        item = selection.Item2(index)
+        selected = item.Value
         product = source.Product
-        context_reference = manager.CreateReferenceFromObject(product)
-        support_reference = manager.CreateReferenceFromGeometry(product, selected)
-        entity.AddSupportFromReference(context_reference, support_reference)
+        # Preferred route (documented workflow, and the only route that works
+        # on releases such as V5R21): build a named reference from the
+        # selection display name - "Selection_RSur:(Face:(...))" - on the
+        # source Part, then bind it from the product. The legacy
+        # CreateReferenceFromObject/CreateReferenceFromGeometry +
+        # AddSupportFromReference combination rejects the selection value on
+        # V5R21, so it is kept only as a fallback.
+        reference_errors: list[str] = []
+        bound = False
+        display_name = None
+        try:
+            reference = getattr(item, "Reference", None)
+            if reference is not None:
+                display_name = str(reference.DisplayName)
+        except Exception as exc:
+            reference_errors.append(f"Reference.DisplayName: {type(exc).__name__}: {exc}")
+        source_part = getattr(source, "Part", None)
+        if display_name and source_part is not None:
+            try:
+                named_reference = source_part.CreateReferenceFromName(display_name)
+                entity.AddSupportFromProduct(product, named_reference)
+                bound = True
+            except Exception as exc:
+                reference_errors.append(f"AddSupportFromProduct: {type(exc).__name__}: {exc}")
+        if not bound:
+            try:
+                context_reference = manager.CreateReferenceFromObject(product)
+                support_reference = manager.CreateReferenceFromGeometry(product, selected)
+                entity.AddSupportFromReference(context_reference, support_reference)
+                bound = True
+            except Exception as exc:
+                reference_errors.append(f"AddSupportFromReference: {type(exc).__name__}: {exc}")
+        if not bound:
+            raise RuntimeError(
+                "could not bind the analysis entity support from the selected object: "
+                + " | ".join(reference_errors)
+            )
     finally:
         selection.Clear()
     return {
@@ -667,7 +724,14 @@ def build_report(
     folder.mkdir(parents=True, exist_ok=True)
     post = model.PostManager
     post.AddExistingCaseForReport(case)
-    post.BuildReport(str(folder), require_text(title, "title", max_length=256), bool(add_created_images))
+    # BuildReport expects a CATIA Folder object rather than a bare path string.
+    # Older releases such as V5R21 reject a string with a type conversion error.
+    file_system = app.FileSystem
+    if file_system.FolderExists(str(folder)):
+        report_folder = file_system.GetFolder(str(folder))
+    else:
+        report_folder = file_system.CreateFolder(str(folder))
+    post.BuildReport(report_folder, require_text(title, "title", max_length=256), bool(add_created_images))
     artifacts = sorted(str(path) for path in folder.rglob("*") if path.is_file())
     return {
         "document": document.Name,

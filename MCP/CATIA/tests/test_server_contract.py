@@ -3,7 +3,9 @@ from __future__ import annotations
 import asyncio
 import unittest
 
-from catia_mcp.server import mcp
+from catia_mcp.com_runtime import CatiaUnavailable
+from catia_mcp.contracts import ContractError
+from catia_mcp.server import _result, mcp
 
 
 class ServerContractTests(unittest.TestCase):
@@ -66,6 +68,25 @@ class ServerContractTests(unittest.TestCase):
         self.assertIn("radius_mm", schema["required"])
         self.assertEqual(properties["edge_indices"]["items"]["type"], "integer")
         self.assertEqual(properties["propagation"]["default"], "tangency")
+
+    def test_missing_catia_session_is_reported_as_non_recoverable(self) -> None:
+        def failing() -> dict[str, object]:
+            raise CatiaUnavailable("CATIA desktop is not running")
+
+        outcome = _result("catia_connect", failing)
+        self.assertEqual(outcome["operation"], "catia_connect")
+        self.assertIn("CATIA desktop is not running", outcome["error"]["message"])
+        self.assertFalse(outcome["error"]["recoverable"])
+        self.assertIn("catia_connect(start_if_missing=True)", outcome["error"]["suggestion"])
+
+    def test_recoverable_errors_keep_the_retry_path(self) -> None:
+        def failing() -> dict[str, object]:
+            raise ContractError("invalid pad length")
+
+        outcome = _result("catia_add_pad", failing)
+        self.assertEqual(outcome["error"]["message"], "invalid pad length")
+        self.assertTrue(outcome["error"]["recoverable"])
+        self.assertNotIn("suggestion", outcome["error"])
 
 
 if __name__ == "__main__":

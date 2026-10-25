@@ -297,6 +297,63 @@ class ModelingContractTests(unittest.TestCase):
         with self.assertRaises(ContractError):
             close_active(app, expected_document_name="ProbeModel.CATPart")
 
+    def test_close_active_verifies_the_document_left_the_collection(self) -> None:
+        class Documents:
+            def __init__(self):
+                self.items = []
+
+            @property
+            def Count(self):
+                return len(self.items)
+
+            def Item(self, index):
+                return self.items[index - 1]
+
+        documents = Documents()
+
+        class Document:
+            Name = "Probe.CATPart"
+            Saved = True
+
+            def Close(self):
+                documents.items.remove(self)
+
+        document = Document()
+        documents.items.append(document)
+        app = type("App", (), {"Documents": documents, "ActiveDocument": document})()
+        result = close_active(app)
+        self.assertTrue(result["closed"])
+        self.assertIs(result["close_verified"], True)
+
+    def test_close_active_reports_a_silently_ignored_close(self) -> None:
+        class Documents:
+            def __init__(self):
+                self.items = []
+
+            @property
+            def Count(self):
+                return len(self.items)
+
+            def Item(self, index):
+                return self.items[index - 1]
+
+        documents = Documents()
+
+        class Document:
+            Name = "Referenced.CATPart"
+            Saved = True
+
+            def Close(self):
+                # V5R21 silently ignores Close() on parts referenced by an
+                # open CATProduct: no error, but the document stays open.
+                return None
+
+        document = Document()
+        documents.items.append(document)
+        app = type("App", (), {"Documents": documents, "ActiveDocument": document})()
+        with self.assertRaisesRegex(RuntimeError, "did not close"):
+            close_active(app)
+
     def test_add_components_uses_plain_sequence_for_dynamic_dispatch(self) -> None:
         calls = []
 

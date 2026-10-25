@@ -25,8 +25,25 @@ The local validation target is CATIA P3 V5-6R2023 B33 at `G:\Program Files\Dassa
 - Targeted baseline: B28 / V5-6R2018 and newer.
 - Locally validated target: B33 / V5-6R2023.
 - Newer releases keep the complete MCP tool surface. Runtime type-library and object-method probes gate only the missing operation.
-- Releases older than B28 are outside the support target. They can be tried explicitly with `CATIA_MCP_ALLOW_LEGACY=true`.
+- Releases older than B28 are maintained on a best-effort basis; V5R21/B21 is adapted and live-validated (see below) and still requires `CATIA_MCP_ALLOW_LEGACY=true`.
 - Module-specific Analysis late types are passed through screened Analysis methods, so GPS/GAS/EST features do not get reduced to a lowest-common-denominator schema.
+
+### V5R21 (B21) compatibility status (live-validated)
+
+CATIA P3 V5R21 B21 (SP6+HF5) has been adapted and validated end to end: all 55
+tools were probed live, and basic modeling, the edge-fillet chain, the complete
+GSD surface chain, materials, assembly, BMP capture, exports
+(stp/igs/stl/3dxml/cgr/model) and the complete Analysis chain (document import
+-> cases -> `StaticSet` solutions -> restraints/loads -> Octree mesh -> full
+static compute -> deformed-mesh image -> native HTML report) all pass.
+Release-specific behaviour differences (fill property rejection, join
+angular-mode fallback, referenced-part close verification, mesh/entity support
+references, report Folder object) are adapted in code; see the "Legacy release
+notes" section of
+[docs/compatibility-and-architecture.md](docs/compatibility-and-architecture.md).
+
+- Re-probe capabilities: `python .\scripts\probe_release_capabilities.py`
+- Re-run the analysis chain: `python .\scripts\validate_analysis_chain.py`
 
 Installed DLLs do not prove that a workbench licence is available. `catia_create_analysis_document` is the first live licence test.
 
