@@ -11,6 +11,8 @@ English documentation: [README.md](README.md)
 | [`MCP/CATIA`](MCP/CATIA) | CATIA V5 建模与原生 Analysis MCP Server |
 | [`MCP/Solidworks`](MCP/Solidworks) | 有状态的 SolidWorks 建模 MCP Server |
 | [`MCP/UG`](MCP/UG) | Siemens NX/UG MCP Server 与 NX 内桥接程序 |
+| [`MCP/EPLAN`](MCP/EPLAN) | EPLAN 2.9 原生审查 MCP、C# Add-in 与受限工作站绘图扩展 |
+| [`skills/eplan-native-design`](skills/eplan-native-design) | PLC 盒、公共端、端子和原生连线设计与复核 Skill |
 | [`fusion_electronics_write_bridge`](fusion_electronics_write_bridge) | Fusion Electronics 本地写入桥 |
 | [`skills/ansys-structural-workbench`](skills/ansys-structural-workbench) | 带质量门禁的 ANSYS Workbench 结构分析 Skill |
 | [`models`](models) | 可复现的 build123d/cadpy 建模源码示例 |

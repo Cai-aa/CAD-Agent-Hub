@@ -1,0 +1,32 @@
+name: eplan-offline-check
+permissions:
+  contents: read
+
+on:
+  push:
+    paths: ['MCP/EPLAN/**', 'skills/eplan-native-design/**', '.github/workflows/eplan-check.yml']
+  pull_request:
+    paths: ['MCP/EPLAN/**', 'skills/eplan-native-design/**', '.github/workflows/eplan-check.yml']
+
+jobs:
+  offline:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install standalone EPLAN review package
+        run: python -m pip install -e "./MCP/EPLAN[test]"
+      - name: Run offline and local IPC tests without EPLAN
+        run: python -m pytest MCP/EPLAN/tests -q
+      - name: Audit the synthetic full snapshot example
+        run: python MCP/EPLAN/scripts/review_native_snapshot.py --plan MCP/EPLAN/examples/native-snapshot-plan.json --capture MCP/EPLAN/examples/native-snapshot-capture.json
+      # Windows tests compile synthetic CLR stubs only, never a commercial SDK.
+      # The real typed helper still needs a separate local EPLAN 2.9 SDK build.

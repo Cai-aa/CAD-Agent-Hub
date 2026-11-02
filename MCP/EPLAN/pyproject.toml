@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-cae-eplan29-mcp"
+version = "0.3.0"
+description = "EPLAN 2.9 native bridge, local help search and evidence-based electrical design review"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+dependencies = ["mcp>=1.27.1,<2", "jsonschema>=4.25,<5", "pywin32>=306; sys_platform == 'win32'"]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<9"]
+
+[project.scripts]
+eplan29-lab-mcp = "eplan_mcp.server:main"
+
+[tool.setuptools]
+packages = ["eplan_mcp"]
+py-modules = ["audit_native", "audit_three_phase", "reset_logic"]
+
+[tool.setuptools.package-data]
+eplan_mcp = ["schemas/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

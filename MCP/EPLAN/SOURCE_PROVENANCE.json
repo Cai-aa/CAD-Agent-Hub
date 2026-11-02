@@ -1,0 +1,31 @@
+{
+  "origin": "project-owned EPLAN 2.9 prototype; source-only import before portability edits",
+  "source_sha256": {
+    "eplan_mcp/bom.py": "3f5b3c6e88fb400c55ae82d2211e62a437995786f0980bf72de8004b6e617cb1",
+    "eplan_mcp/bridge.py": "2a5266dc1c4bb03f8a49246c3491ea9335e7e69a88f3c89aa59375575340b395",
+    "eplan_mcp/curated_parts.py": "4b948dd18c68679c23f3372b959a63935d69abb3b9d566dd99377017539081a4",
+    "eplan_mcp/design.py": "bdcd10d63825f445fffa3e8ed13ad6040c7cb18fd1696bb14ebeb9ef9af2fddc",
+    "eplan_mcp/review.py": "0f31c6a76f9baca8373bc91ec83be0ea460292a32639bf4c2a72950a43b6b8a0",
+    "eplan_mcp/server.py": "a67a68f1e82496c4abf0898b7653a54750c6a0e44ebb4fcda6e5bcac2653f568",
+    "eplan_mcp/__init__.py": "2a4e92d3484bcac6b23013cd5e9ebf681329bb76b6ea9e03c7840a2f840e4a99",
+    "eplan_mcp/__main__.py": "f62b759b2fe633bc41a4387bf504a2ec502f643dd5922dc64053c9203670ff3b",
+    "audit_native.py": "a6a269c3437518325850a7e92592bf08d85a773941371d17ccecfd0f850f0d6d",
+    "audit_three_phase.py": "be3fd7f0193f26cd9ce1e3d76bf20847a9bdaab937a509d46e3bdf84829eb2c4",
+    "reset_logic.py": "d0bef0dc80513040f9743da2b962ab76d42623194611a3f6c9014110cabc5591",
+    "addin/BasicFix.cs": "a6d3c5f5ca1a567ed7dd4bdc6c86c77e1197036477eb6da33243d534b4367287",
+    "addin/ClientEngineering.cs": "081a597a15847a304fe56dbd0830f2d9d51308cffb83ca3f1d8333c906ecf214",
+    "addin/CodexBridge.cs": "4b7d95149dc5584fed0ab261685ac0cf22c59ec91ccef0ead966aaee33402144",
+    "addin/CuratedParts.cs": "3d72111b93b95918de81ef3a816f7ece0ae28c62371a236d530b072f5a6015da",
+    "addin/MopParameterFix.cs": "cd541b9594e0d1268cfd73407c2d17d8c63bd7212ab68782983291f8a1810506",
+    "addin/PageOrder.cs": "e202b12ee08f1c4349cbd82567cc42ed3deed615837d20d7d5dde01e7a8e7ba5",
+    "addin/PlcChinese.cs": "e90f7197e5279e7917fa0863e749b078dd42d49d89007a7b9d660b4fc9ba714b",
+    "addin/ReferenceInterfaces.cs": "e127b5d98c074b0e61aa3bc0a1249c53eb341b4e8be2fe2824ed37976838ac35",
+    "addin/ThreePhase.cs": "ffa7788f4d28352e12a278cf9247e4bc511d25928da03a15247e76259404cea7"
+  },
+  "excluded": [
+    "vendor DLLs and manuals",
+    "customer projects and databases",
+    "native identity snapshots",
+    "delivery archives and generated media"
+  ]
+}
