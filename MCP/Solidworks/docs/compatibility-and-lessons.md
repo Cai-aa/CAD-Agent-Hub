@@ -32,13 +32,21 @@ This file records host-specific behavior that must remain covered by tests.
 - Both paths verify that the target exists and is non-empty before reporting
   success.
 
-## Document lifecycle
+## Document lifecycle (0.5)
 
-- Modeling runs are transactions: enumerate first, refuse to close unmanaged
-  or dirty user documents, close only recognized clean MCP documents, create
-  one test document, and close it automatically on failure.
-- `SphereProfileSketch` and `SphereRevolve` are MCP ownership markers, so a
-  runtime reload does not turn the generated sphere into an unmanaged blocker.
+- Existing documents are never automatically closed by single-document mode.
+  Feature names are not ownership evidence.
+- New graph parts are validated before save. Failure cleanup closes only the
+  exact new COM document when enumeration proves its title is unambiguous.
+- A per-call document token binds COM identity, path, title and configuration.
+  The active object is rechecked between graph steps and before saving.
+- Mutations use a durable request journal. Partial incremental failures block
+  subsequent writes and are not automatically retried or claimed rolled back.
+- `StartRecordingUndoObject` returns void; `FinishRecordingUndoObject2` returns
+  bool. `GetErrorCode2` uses an out-parameter of type BOOL, not I4. Feature
+  warnings are reported separately from errors.
+- COM interface casts resolve the actual host's typelib instead of hardcoding
+  the SolidWorks 2025 major version.
 
 ## Why the first sphere attempts failed
 

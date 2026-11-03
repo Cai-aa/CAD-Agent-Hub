@@ -1,6 +1,7 @@
 import unittest
 
 from solidworks_mcp.executor import SolidWorksExecutor
+from solidworks_mcp.contracts import ContractError
 
 
 class FakeFeature:
@@ -58,30 +59,32 @@ class SingleDocumentModeTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.executor.session.close()
 
-    def test_closes_previous_clean_mcp_document(self) -> None:
+    def test_preserves_previous_clean_mcp_document(self) -> None:
         app = FakeApp([
             FakeDocument("gear.sldprt", ["GearBlank", "InvoluteToothSketch"], "C:/gear.sldprt", False)
         ])
-        self.assertEqual(self.executor._prepare_single_document_test(app), ["gear.sldprt"])
-        self.assertEqual(app.GetDocumentCount(), 0)
-
-    def test_refuses_to_close_user_document(self) -> None:
-        app = FakeApp([FakeDocument("customer.sldprt", ["Boss-Extrude1"], "C:/customer.sldprt")])
-        with self.assertRaisesRegex(RuntimeError, "user/unmanaged document"):
+        with self.assertRaisesRegex(ContractError, "zero open documents"):
             self.executor._prepare_single_document_test(app)
         self.assertEqual(app.closed, [])
 
-    def test_closes_owned_blank_document_without_feature_markers(self) -> None:
+    def test_refuses_to_close_user_document(self) -> None:
+        app = FakeApp([FakeDocument("customer.sldprt", ["Boss-Extrude1"], "C:/customer.sldprt")])
+        with self.assertRaisesRegex(ContractError, "zero open documents"):
+            self.executor._prepare_single_document_test(app)
+        self.assertEqual(app.closed, [])
+
+    def test_preserves_owned_blank_document_without_feature_markers(self) -> None:
         app = FakeApp([FakeDocument("Part1", [])])
         self.executor._owned_document_titles.add("Part1")
-        self.assertEqual(self.executor._prepare_single_document_test(app), ["Part1"])
-        self.assertEqual(app.GetDocumentCount(), 0)
+        with self.assertRaisesRegex(ContractError, "zero open documents"):
+            self.executor._prepare_single_document_test(app)
+        self.assertEqual(app.closed, [])
 
     def test_refuses_to_close_dirty_mcp_document(self) -> None:
         app = FakeApp([
             FakeDocument("edited-gear.sldprt", ["GearBlank"], "C:/edited-gear.sldprt", True)
         ])
-        with self.assertRaisesRegex(RuntimeError, "unsaved changes"):
+        with self.assertRaisesRegex(ContractError, "zero open documents"):
             self.executor._prepare_single_document_test(app)
         self.assertEqual(app.closed, [])
 

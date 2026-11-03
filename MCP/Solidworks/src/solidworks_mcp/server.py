@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import importlib
+import json
 import uuid
 from typing import Any
+from mcp.server.fastmcp.exceptions import ToolError
 
 try:
     # MCP SDK 2.x promotes the high-level server to the public mcp.server API.
@@ -11,11 +12,24 @@ except ImportError:  # pragma: no cover - exercised only with MCP SDK 1.x
     # MCP SDK 1.x exposed the same decorator-based API as FastMCP.
     from mcp.server.fastmcp import FastMCP as MCPApplication
 
+from .safety import SafetyError, expected_document
 from .contracts import ContractError
 from .executor import SolidWorksExecutor
 from .feature_graph import compile_feature_graph
+from .modeling_rules import review_feature_graph
 
-mcp = MCPApplication("SolidWorks Agent MCP")
+mcp = MCPApplication(
+    "SolidWorks Agent MCP",
+    instructions=(
+        "Use Chinese display_name with stable graph IDs; use name_map for subsequent edits. "
+        "Review complex intersections with solidworks_review_feature_graph; offline review is not CAD verification. "
+        "Inspect the active document, then bind its exact title/path with solidworks_bind_document. "
+        "Pass the returned document_token to every existing-model write. New part tools return their own token. "
+        "Never retry a failed or timed-out mutation under a new ID without inspecting its outcome. "
+        "Use solidworks_operation_result after a timeout. Saves refuse overwrite unless explicitly requested. "
+        "Partial failures block writes until inspected and explicitly acknowledged on rebind. Runtime reload is disabled."
+    ),
+)
 executor = SolidWorksExecutor()
 
 
@@ -23,19 +37,35 @@ def _request_id(request_id: str | None) -> str:
     return request_id.strip() if request_id and request_id.strip() else str(uuid.uuid4())
 
 
-def _result(operation: str, fn: Any) -> dict[str, Any]:
-    try:
-        return {"operation": operation, "result": fn()}
-    except (ContractError, RuntimeError, TimeoutError) as exc:
-        return {"operation": operation, "error": {"message": str(exc), "recoverable": True}}
-    except Exception as exc:
-        return {
-            "operation": operation,
-            "error": {
-                "message": f"{type(exc).__name__}: {exc}",
-                "recoverable": True,
+def _failure(operation: str, exc: Exception):
+    raise ToolError(
+        json.dumps(
+            {
+                "operation": operation,
+                "error": {
+                    "code": getattr(exc, "code", type(exc).__name__),
+                    "message": str(exc),
+                    "recoverable": False,
+                    **getattr(exc, "details", {}),
+                },
             },
-        }
+            ensure_ascii=False,
+        )
+    ) from exc
+
+
+def _result(
+    operation: str, fn: Any, document_token: str | None = None
+) -> dict[str, Any]:
+    try:
+        with expected_document(document_token):
+            return {"operation": operation, "result": fn()}
+    except SafetyError as exc:
+        return _failure(operation, exc)
+    except (ContractError, RuntimeError, TimeoutError) as exc:
+        return _failure(operation, exc)
+    except Exception as exc:
+        return _failure(operation, exc)
 
 
 @mcp.tool()
@@ -100,6 +130,7 @@ def solidworks_rebuild_diagnostics(
     perform_rebuild: bool = False,
     full_rebuild: bool = False,
     request_id: str | None = None,
+    document_token: str | None = None,
 ) -> dict[str, Any]:
     """Inspect rebuild/dirty state, optionally performing a normal or full rebuild first."""
     return _result(
@@ -109,6 +140,7 @@ def solidworks_rebuild_diagnostics(
             perform_rebuild,
             full_rebuild,
         ),
+        document_token=document_token,
     )
 
 
@@ -148,11 +180,15 @@ def solidworks_list_configurations(request_id: str | None = None) -> dict[str, A
 def solidworks_activate_configuration(
     configuration_name: str,
     request_id: str | None = None,
+    document_token: str | None = None,
 ) -> dict[str, Any]:
     """Activate an existing configuration by exact name without saving the document."""
     return _result(
         "activate_configuration",
-        lambda: executor.activate_configuration(_request_id(request_id), configuration_name),
+        lambda: executor.activate_configuration(
+            _request_id(request_id), configuration_name
+        ),
+        document_token=document_token,
     )
 
 
@@ -163,6 +199,7 @@ def solidworks_create_configuration(
     alternate_name: str = "",
     activate: bool = True,
     request_id: str | None = None,
+    document_token: str | None = None,
 ) -> dict[str, Any]:
     """Create a non-derived configuration, optionally making it active; saving remains explicit."""
     return _result(
@@ -174,6 +211,7 @@ def solidworks_create_configuration(
             alternate_name,
             activate,
         ),
+        document_token=document_token,
     )
 
 
@@ -194,6 +232,7 @@ def solidworks_set_custom_properties(
     properties: dict[str, Any],
     configuration_name: str | None = None,
     request_id: str | None = None,
+    document_token: str | None = None,
 ) -> dict[str, Any]:
     """Upsert validated text, numeric, or boolean custom properties without saving the document."""
     return _result(
@@ -203,6 +242,7 @@ def solidworks_set_custom_properties(
             properties,
             configuration_name,
         ),
+        document_token=document_token,
     )
 
 
@@ -234,6 +274,7 @@ def solidworks_assign_material(
     configuration_name: str | None = None,
     rebuild: bool = True,
     request_id: str | None = None,
+    document_token: str | None = None,
 ) -> dict[str, Any]:
     """Assign a material from an existing .sldmat database to one part configuration."""
     return _result(
@@ -245,50 +286,20 @@ def solidworks_assign_material(
             configuration_name,
             rebuild,
         ),
+        document_token=document_token,
     )
 
 
 @mcp.tool()
 def solidworks_reload_runtime() -> dict[str, Any]:
-    """Reload this installed MCP's trusted feature modules and recreate the COM executor.
-
-    This accepts no path or source code. It exists only to shorten the live-test
-    cycle after local edits to the installed editable project.
-    """
-    def reload_modules() -> dict[str, Any]:
-        global executor, compile_feature_graph
-        from . import executor as executor_module
-        from . import feature_graph as feature_graph_module
-        from . import gearbox as gearbox_module
-        from . import involute_gear as involute_gear_module
-        from . import native_features as native_features_module
-        from . import output_shaft as output_shaft_module
-        from . import interactive as interactive_module
-        from . import part_generators as part_generators_module
-        from . import primitives as primitives_module
-        from . import config as config_module
-        from . import com_runtime as com_runtime_module
-
-        try:
-            executor.session.close()
-        except Exception:
-            pass
-        importlib.reload(native_features_module)
-        importlib.reload(output_shaft_module)
-        importlib.reload(feature_graph_module)
-        importlib.reload(gearbox_module)
-        importlib.reload(involute_gear_module)
-        importlib.reload(primitives_module)
-        importlib.reload(interactive_module)
-        importlib.reload(part_generators_module)
-        importlib.reload(config_module)
-        importlib.reload(com_runtime_module)
-        importlib.reload(executor_module)
-        compile_feature_graph = feature_graph_module.compile_feature_graph
-        executor = executor_module.SolidWorksExecutor()
-        return {"ok": True, "reloaded": True, "version": "0.4.0"}
-
-    return _result("reload_runtime", reload_modules)
+    """Retired endpoint: restart the idle MCP process to load new code."""
+    return _failure(
+        "reload_runtime",
+        SafetyError(
+            "RELOAD_DISABLED",
+            "Runtime reload is disabled. Restart the MCP after the current operation has finished.",
+        ),
+    )
 
 
 @mcp.tool()
@@ -304,15 +315,33 @@ def solidworks_open_document(path: str, request_id: str | None = None) -> dict[s
 
 
 @mcp.tool()
-def solidworks_save_active(path: str | None = None, request_id: str | None = None) -> dict[str, Any]:
+def solidworks_save_active(
+    path: str | None = None,
+    request_id: str | None = None,
+    document_token: str | None = None,
+    overwrite: bool = False,
+) -> dict[str, Any]:
     """Save active document, optionally to a specified SolidWorks document path."""
-    return _result("save", lambda: executor.save_active(_request_id(request_id), path))
+    return _result(
+        "save",
+        lambda: executor.save_active(_request_id(request_id), path, overwrite),
+        document_token=document_token,
+    )
 
 
 @mcp.tool()
-def solidworks_export_active(path: str, request_id: str | None = None) -> dict[str, Any]:
+def solidworks_export_active(
+    path: str,
+    request_id: str | None = None,
+    document_token: str | None = None,
+    overwrite: bool = False,
+) -> dict[str, Any]:
     """Export active document as STEP, IGES, STL, PDF, DXF, or DWG."""
-    return _result("export", lambda: executor.export_active(_request_id(request_id), path))
+    return _result(
+        "export",
+        lambda: executor.export_active(_request_id(request_id), path, overwrite),
+        document_token=document_token,
+    )
 
 
 @mcp.tool()
@@ -464,6 +493,7 @@ def solidworks_set_dimension(
     configuration_names: list[str] | None = None,
     rebuild: bool = True,
     request_id: str | None = None,
+    document_token: str | None = None,
 ) -> dict[str, Any]:
     """Set one existing dimension in-place without recreating or saving the model.
 
@@ -481,6 +511,7 @@ def solidworks_set_dimension(
             configuration_names,
             rebuild,
         ),
+        document_token=document_token,
     )
 
 
@@ -493,6 +524,7 @@ def solidworks_set_feature_parameter(
     configuration: str = "this",
     rebuild: bool = True,
     request_id: str | None = None,
+    document_token: str | None = None,
 ) -> dict[str, Any]:
     """Replace one named feature parameter, for example D1 on Boss-Extrude1."""
     return _result(
@@ -506,6 +538,7 @@ def solidworks_set_feature_parameter(
             configuration,
             rebuild,
         ),
+        document_token=document_token,
     )
 
 
@@ -516,6 +549,7 @@ def solidworks_edit_sketch(
     mode: str = "append",
     rebuild: bool = True,
     request_id: str | None = None,
+    document_token: str | None = None,
 ) -> dict[str, Any]:
     """Append to or replace an existing sketch with lines, circles, arcs, splines, or polylines."""
     return _result(
@@ -523,6 +557,7 @@ def solidworks_edit_sketch(
         lambda: executor.edit_sketch(
             _request_id(request_id), sketch_name, entities, mode, rebuild
         ),
+        document_token=document_token,
     )
 
 
@@ -533,6 +568,7 @@ def solidworks_delete_feature(
     delete_absorbed: bool = False,
     rebuild: bool = True,
     request_id: str | None = None,
+    document_token: str | None = None,
 ) -> dict[str, Any]:
     """Delete one existing feature, optionally including child or absorbed features."""
     return _result(
@@ -544,6 +580,7 @@ def solidworks_delete_feature(
             delete_absorbed,
             rebuild,
         ),
+        document_token=document_token,
     )
 
 
@@ -552,11 +589,13 @@ def solidworks_rollback(
     location: str,
     feature_name: str | None = None,
     request_id: str | None = None,
+    document_token: str | None = None,
 ) -> dict[str, Any]:
     """Move the rollback bar to end, previous, before a feature, or after a feature."""
     return _result(
         "rollback",
         lambda: executor.rollback(_request_id(request_id), location, feature_name),
+        document_token=document_token,
     )
 
 
@@ -587,11 +626,13 @@ def solidworks_inspect_relations(
 def solidworks_select_references(
     reference_tokens: list[str],
     request_id: str | None = None,
+    document_token: str | None = None,
 ) -> dict[str, Any]:
     """Select faces or edges returned by solidworks_inspect_relations."""
     return _result(
         "select_references",
         lambda: executor.select_references(_request_id(request_id), reference_tokens),
+        document_token=document_token,
     )
 
 
@@ -604,6 +645,7 @@ def solidworks_add_edge_feature(
     angle_deg: float = 45.0,
     rebuild: bool = True,
     request_id: str | None = None,
+    document_token: str | None = None,
 ) -> dict[str, Any]:
     """Add a fillet or chamfer to persistent edge references without rebuilding the part."""
     return _result(
@@ -617,6 +659,7 @@ def solidworks_add_edge_feature(
             angle_deg,
             rebuild,
         ),
+        document_token=document_token,
     )
 
 
@@ -635,6 +678,7 @@ def solidworks_add_stepped_shaft_with_keyway(
     keyway_depth_mm: float = 1.6,
     rebuild: bool = True,
     request_id: str | None = None,
+    document_token: str | None = None,
 ) -> dict[str, Any]:
     """Add a separate coaxial stepped shaft with an axial keyway to the active gear part."""
     return _result(
@@ -654,6 +698,7 @@ def solidworks_add_stepped_shaft_with_keyway(
             keyway_depth_mm=keyway_depth_mm,
             rebuild=rebuild,
         ),
+        document_token=document_token,
     )
 
 
@@ -679,11 +724,44 @@ def solidworks_create_parametric_part(
 @mcp.tool()
 def solidworks_compile_feature_graph(feature_graph: dict[str, Any]) -> dict[str, Any]:
     """Validate CAD-neutral Feature Graph IR and return a deterministic, auditable build plan."""
-    return _result("compile_feature_graph", lambda: {"version": "1.0", "plan": compile_feature_graph(feature_graph)})
+    def compile_and_review():
+        plan=compile_feature_graph(feature_graph)
+        return {"version":"1.0","plan":plan,"planning_review":review_feature_graph(feature_graph,plan)}
+    return _result("compile_feature_graph", compile_and_review)
+
+
+@mcp.tool()
+def solidworks_review_feature_graph(feature_graph: dict[str, Any]) -> dict[str, Any]:
+    """Offline name/reference, plane and intersection-risk review; does not certify CAD geometry."""
+    return _result("review_feature_graph",lambda:review_feature_graph(feature_graph))
 
 
 def main() -> None:
     mcp.run(transport="stdio")
+
+
+@mcp.tool()
+def solidworks_bind_document(
+    title: str,
+    expected_path: str | None = None,
+    acknowledge_partial_changes: bool = False,
+    request_id: str | None = None,
+) -> dict[str, Any]:
+    """Bind the exact active document; pass the returned token to each existing-model write."""
+    return _result(
+        "bind_document",
+        lambda: executor.bind_document(
+            _request_id(request_id), title, expected_path, acknowledge_partial_changes
+        ),
+    )
+
+
+@mcp.tool()
+def solidworks_operation_result(request_id: str) -> dict[str, Any]:
+    """Read durable RUNNING/SUCCEEDED/FAILED/UNKNOWN outcome without entering COM."""
+    return _result(
+        "operation_result", lambda: executor.session.operation_result(request_id)
+    )
 
 
 if __name__ == "__main__":

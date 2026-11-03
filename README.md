@@ -27,3 +27,10 @@ This repository intentionally contains source code, tests, schemas, portable con
 ## Validation
 
 Run each MCP project's documented unit tests before using it with a live CAD session. A successful COM/API call is not by itself proof that a model, mesh, drawing, or simulation result is correct; inspect the native application state and generated artifacts.
+
+## SolidWorks MCP integrity and drawing modeling
+
+- [Native SolidWorks MCP and configuration](MCP/Solidworks/README.md)
+- [PDF drawing evidence pipeline](MCP/DrawingModeling/README.md)
+- [CAD modeling Skill](skills/solidworks-cad-agent/SKILL.md) and [drawing Skill](skills/solidworks-drawing-modeling/SKILL.md)
+- [Chinese feature trees, geometry rules and validation](MCP/Solidworks/docs/modeling-guidelines.zh-CN.md)

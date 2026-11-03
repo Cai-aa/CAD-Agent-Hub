@@ -273,7 +273,9 @@ def assign_material(
     configuration = _resolve_configuration(model, configuration_name)
     database = Path(require_text(database_path, "database_path")).expanduser().resolve()
     if database.suffix.lower() != ".sldmat" or not database.is_file():
-        raise ContractError(f"database_path must be an existing .sldmat file: {database}")
+        raise ContractError(
+            f"database_path must be an existing .sldmat file: {database}"
+        )
     name = require_text(material_name, "material_name")
     result = _com_value(
         model,
@@ -283,7 +285,8 @@ def assign_material(
         name,
     )
     if rebuild:
-        _com_value(model, "EditRebuild3")
+        if _com_value(model, "EditRebuild3") is not True:
+            raise RuntimeError("SolidWorks material rebuild failed")
     readback = get_material(model, configuration)
     if readback["material_name"] != name:
         raise RuntimeError(

@@ -12,11 +12,13 @@ class FakeModel:
     def ClearSelection2(self, clear: bool) -> None:
         self.calls.append("clear")
 
-    def EditRebuild3(self) -> None:
+    def EditRebuild3(self) -> bool:
         self.calls.append("dirty_rebuild")
+        return True
 
-    def ForceRebuild3(self, top_only: bool) -> None:
+    def ForceRebuild3(self, top_only: bool) -> bool:
         self.calls.append("full_rebuild")
+        return True
 
     def GraphicsRedraw2(self) -> None:
         self.calls.append("redraw")

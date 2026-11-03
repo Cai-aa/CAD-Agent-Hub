@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import array
+from copy import deepcopy
+from .modeling_rules import validate_sketch_transform
 import math
 from typing import Any, Iterable
 
@@ -13,19 +15,24 @@ PLANE_ALIASES = {
     "Right Plane": ("Right Plane", "右视基准面"),
 }
 
-SOLIDWORKS_TYPELIB = ("{83A33D31-27C5-11CE-BFD4-00400513BB57}", 0, 33, 0)
-
 
 def _cast_to(obj: Any, interface_name: str) -> Any:
     from win32com.client import CastTo, gencache  # type: ignore
 
-    gencache.GetModuleForTypelib(*SOLIDWORKS_TYPELIB)
+    # Resolve the actual host typelib (e.g. 32 for SW2024), never assume SW2025.
+    library, _ = obj._oleobj_.GetTypeInfo().GetContainingTypeLib()
+    attributes = library.GetLibAttr()
+    gencache.EnsureModule(
+        str(attributes[0]), attributes[1], attributes[3], attributes[4]
+    )
     return CastTo(obj, interface_name)
 
 
 def _com_value(obj: Any, name: str, *args: Any) -> Any:
     member = getattr(obj, name)
-    return member(*args) if callable(member) else member
+    # A COM property returning another IDispatch is Python-callable too. Calling
+    # its default member is NOT the same as invoking the requested API method.
+    return member(*args) if callable(member) and not hasattr(member, "_oleobj_") else member
 
 
 def _empty_callout() -> Any:
@@ -269,7 +276,10 @@ def _weld_equation_endpoints(model: Any, manager: Any, records: list[dict[str, A
     model.ClearSelection2(True)
 
 
-def create_sketch(model: Any, name: str, plane: str, entities: list[dict[str, Any]]) -> Any:
+def create_sketch(
+    model: Any, name: str, plane: str, entities: list[dict[str, Any]],
+    coordinate_space: str = "sketch", math_utility: Any = None,
+) -> Any:
     try:
         select_plane(model, plane)
     except Exception as exc:
@@ -285,8 +295,31 @@ def create_sketch(model: Any, name: str, plane: str, entities: list[dict[str, An
     except Exception as exc:
         raise RuntimeError(f"open_sketch failed: {exc}") from exc
     try:
+        if coordinate_space == "model":
+            try:
+                active_sketch = _com_value(model, "GetActiveSketch2")
+                transform = _com_value(active_sketch, "ModelToSketchTransform")
+                matrix = list(_com_value(transform, "ArrayData"))
+                validate_sketch_transform(matrix)
+            except Exception as exc:
+                raise RuntimeError(f"read model-to-sketch transform failed: {exc}") from exc
+            entities = deepcopy(entities)
+            def local(values):
+                point = [float(x)*MM for x in values]
+                converted = [matrix[12]*sum(point[j]*matrix[j*3+i] for j in range(3))+matrix[9+i] for i in range(3)]
+                if abs(converted[2]) > 1e-6:
+                    raise RuntimeError(f"Model-space point not on plane: point={point}, transformed={converted}, matrix={matrix}")
+                return [converted[0]/MM, converted[1]/MM, 0.0]
+            for entity in entities:
+                for field in ("center", "start", "end"):
+                    if field in entity:
+                        entity[field] = local(entity[field])
+                if "points" in entity:
+                    entity["points"] = [local(point) for point in entity["points"]]
         endpoint_records: list[dict[str, Any]] = []
-        needs_equation_weld = any(entity.get("kind") == "equation_spline" for entity in entities)
+        needs_equation_weld = any(
+            entity.get("kind") == "equation_spline" for entity in entities
+        )
         previous_auto_solve: bool | None = None
         previous_add_to_db: bool | None = None
         previous_display_when_added: bool | None = None
@@ -337,7 +370,9 @@ def create_sketch(model: Any, name: str, plane: str, entities: list[dict[str, An
                     for point in points:
                         payload.extend(_point3(point))
                     if entity.get("closed", False):
-                        raise RuntimeError("closed splines are not supported by the native 2D spline adapter")
+                        raise RuntimeError(
+                            "closed splines are not supported by the native 2D spline adapter"
+                        )
                     segment = _create_spline(manager, payload)
                 elif kind == "equation_spline":
                     segment = manager.CreateEquationSpline2(
@@ -361,6 +396,10 @@ def create_sketch(model: Any, name: str, plane: str, entities: list[dict[str, An
                     segment = None
                     for start, end in pairs:
                         segment = manager.CreateLine(*start, *end)
+                        if segment is None:
+                            raise RuntimeError(
+                                "SolidWorks returned no line in polyline"
+                            )
                 else:
                     raise RuntimeError(f"Unsupported sketch entity: {kind}")
                 if segment is None:
@@ -371,10 +410,20 @@ def create_sketch(model: Any, name: str, plane: str, entities: list[dict[str, An
                     and "start" in entity
                     and "end" in entity
                 ):
-                    endpoint_records.extend([
-                        {"kind": kind, "coord": entity["start"], "point": _segment_endpoint(segment, kind, True)},
-                        {"kind": kind, "coord": entity["end"], "point": _segment_endpoint(segment, kind, False)},
-                    ])
+                    endpoint_records.extend(
+                        [
+                            {
+                                "kind": kind,
+                                "coord": entity["start"],
+                                "point": _segment_endpoint(segment, kind, True),
+                            },
+                            {
+                                "kind": kind,
+                                "coord": entity["end"],
+                                "point": _segment_endpoint(segment, kind, False),
+                            },
+                        ]
+                    )
             except Exception as exc:
                 raise RuntimeError(
                     f"create_entity[{entity_index}] {kind} failed: {exc}"
@@ -387,7 +436,10 @@ def create_sketch(model: Any, name: str, plane: str, entities: list[dict[str, An
                 manager.AutoSolve = previous_auto_solve
             except Exception:
                 pass
-        if "previous_display_when_added" in locals() and previous_display_when_added is not None:
+        if (
+            "previous_display_when_added" in locals()
+            and previous_display_when_added is not None
+        ):
             try:
                 manager.DisplayWhenAdded = previous_display_when_added
             except Exception:
@@ -410,12 +462,12 @@ def create_sketch(model: Any, name: str, plane: str, entities: list[dict[str, An
         raise RuntimeError(f"name_sketch failed: {exc}") from exc
 
 
-def boss_extrude(model: Any, name: str, sketch_name: str, depth_mm: float, merge: bool = True) -> Any:
+def boss_extrude(model: Any, name: str, sketch_name: str, depth_mm: float, merge: bool = True, reverse_direction: bool = True) -> Any:
     model.ClearSelection2(True)
     if not _select_by_id(model, sketch_name, "SKETCH"):
         raise RuntimeError(f"Could not select sketch for boss extrusion: {sketch_name}")
     feature = model.FeatureManager.FeatureExtrusion3(
-        True, False, True, 0, 0, depth_mm * MM, 0.0,
+        True, False, bool(reverse_direction), 0, 0, depth_mm * MM, 0.0,
         False, False, False, False, 0.0, 0.0,
         False, False, False, False, merge, False, True,
         0, 0.0, False,
@@ -728,9 +780,11 @@ def feature_names(model: Any, limit: int = 500) -> list[dict[str, str]]:
 def rebuild(model: Any, *, full: bool = False, redraw: bool = False) -> None:
     model.ClearSelection2(True)
     if full:
-        _com_value(model, "ForceRebuild3", False)
+        result = _com_value(model, "ForceRebuild3", False)
     else:
-        _com_value(model, "EditRebuild3")
+        result = _com_value(model, "EditRebuild3")
+    if result is not True:
+        raise RuntimeError("SolidWorks rebuild failed or returned no verifiable result")
     if redraw:
         _com_value(model, "GraphicsRedraw2")
 
@@ -741,20 +795,52 @@ def execute_plan(
     *,
     full_rebuild: bool = False,
     redraw: bool = False,
+    before_step: Any = None,
+    application: Any = None,
 ) -> list[dict[str, Any]]:
     """Execute a normalized Feature Graph plan against one native part document."""
     results: list[dict[str, Any]] = []
     for step in plan:
+        if before_step is not None:
+            before_step()
         operation = step["operation"]
         name = step["name"]
         try:
             if operation == "new_part":
-                results.append({"step": step["step"], "name": name, "operation": operation, "ok": True})
+                results.append(
+                    {
+                        "step": step["step"],
+                        "name": name,
+                        "operation": operation,
+                        "ok": True,
+                    }
+                )
                 continue
             if operation == "create_sketch":
-                create_sketch(model, name, step["plane"], step["entities"])
+                space = step.get("coordinate_space", "sketch")
+                create_sketch(model, name, step["plane"], step["entities"], space,
+                              None)
+            elif operation == "reference_plane_points":
+                import pythoncom
+                from win32com.client import VARIANT
+                points = [VARIANT(pythoncom.VT_ARRAY | pythoncom.VT_R8,
+                                  [x*MM for x in point]) for point in step["points_mm"]]
+                model.ClearSelection2(True)
+                plane = model.CreatePlaneFixed2(*points, False)
+                if plane is None:
+                    raise RuntimeError("SolidWorks could not create the specified plane")
+                rename_feature(_last_feature(model), name)
+            elif operation == "cut_loft":
+                model.ClearSelection2(True)
+                for index, profile in enumerate(step["profiles"]):
+                    if not _select_by_id(model,profile,"SKETCH",append=index>0,mark=1):
+                        raise RuntimeError(f"Could not select loft profile: {profile}")
+                feature=model.FeatureManager.InsertCutBlend(False,False,False,1.0,0,0,False,0.0,0.0,0,True,True)
+                rename_feature(feature,name)
             elif operation == "boss_extrude":
-                boss_extrude(model, name, step["sketch"], step["depth_mm"], step["merge"])
+                boss_extrude(
+                    model, name, step["sketch"], step["depth_mm"], step["merge"], step.get("reverse_direction", True)
+                )
             elif operation == "boss_revolve":
                 _, revolve_backend = boss_revolve(
                     model,
@@ -804,7 +890,9 @@ def execute_plan(
                     step["selector"],
                 )
             elif operation == "create_sketch_and_extrude":
-                raise RuntimeError("Legacy extrude plans are compile-only; use sketch + boss_extrude")
+                raise RuntimeError(
+                    "Legacy extrude plans are compile-only; use sketch + boss_extrude"
+                )
             else:
                 raise RuntimeError(f"Unsupported executable operation: {operation}")
         except Exception as exc:
@@ -812,12 +900,19 @@ def execute_plan(
                 f"Feature step {step['step']} '{name}' ({operation}) failed: "
                 f"{type(exc).__name__}: {exc}"
             ) from exc
-        result = {"step": step["step"], "name": name, "operation": operation, "ok": True}
+        result = {
+            "step": step["step"],
+            "name": name,
+            "operation": operation,
+            "ok": True,
+        }
         if operation == "boss_revolve":
             result.update(
                 axis_strategy=step["axis_strategy"],
                 backend=revolve_backend,
             )
         results.append(result)
+    if before_step is not None:
+        before_step()
     rebuild(model, full=full_rebuild, redraw=redraw)
     return results

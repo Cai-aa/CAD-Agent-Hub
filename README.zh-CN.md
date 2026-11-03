@@ -27,3 +27,10 @@ English documentation: [README.md](README.md)
 ## 验证原则
 
 连接真实 CAD 会话前，请先执行各 MCP 项目文档中的单元测试。COM/API 调用成功不等于模型、网格、工程图或仿真结果正确，仍需在原生软件中检查模型树、参数和生成产物。
+
+## SolidWorks MCP integrity and drawing modeling
+
+- [Native SolidWorks MCP and configuration](MCP/Solidworks/README.md)
+- [PDF drawing evidence pipeline](MCP/DrawingModeling/README.md)
+- [CAD modeling Skill](skills/solidworks-cad-agent/SKILL.md) and [drawing Skill](skills/solidworks-drawing-modeling/SKILL.md)
+- [Chinese feature trees, geometry rules and validation](MCP/Solidworks/docs/modeling-guidelines.zh-CN.md)
