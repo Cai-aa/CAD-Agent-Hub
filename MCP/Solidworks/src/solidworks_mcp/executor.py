@@ -103,8 +103,15 @@ def _raw_save_as(model: Any, target: Path) -> tuple[bool, int, int]:
         if isinstance(result, int):
             if result == 0 and not isinstance(result,bool):
                 return True,0,0
-            import pythoncom
-            from win32com.client import VARIANT
+            # Preserve the native failure when no COM fallback is available;
+            # importing pywin32 must not replace it with an unrelated error.
+            if getattr(model, "Extension", None) is None:
+                return False, int(result) or 1, 0
+            try:
+                import pythoncom
+                from win32com.client import VARIANT
+            except ImportError:
+                return False, int(result) or 1, 0
             errors=VARIANT(pythoncom.VT_BYREF|pythoncom.VT_I4,0)
             warnings=VARIANT(pythoncom.VT_BYREF|pythoncom.VT_I4,0)
             empty=VARIANT(pythoncom.VT_DISPATCH,None)

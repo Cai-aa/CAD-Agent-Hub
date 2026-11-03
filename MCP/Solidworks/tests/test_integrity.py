@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextvars
 from dataclasses import replace
 import math
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 import tempfile
@@ -13,7 +14,7 @@ from unittest.mock import patch
 from solidworks_mcp.com_runtime import SolidWorksSession, StaExecutor
 from solidworks_mcp.config import Settings
 from solidworks_mcp.contracts import ContractError, require_positive
-from solidworks_mcp.executor import SolidWorksExecutor, _save_as
+from solidworks_mcp.executor import SolidWorksExecutor, _save_as, _raw_save_as
 from solidworks_mcp.feature_graph import compile_feature_graph
 from solidworks_mcp.interactive import (
     set_dimension,
@@ -29,6 +30,11 @@ from test_interactive import FakeModel, FakeSketchModel
 
 
 class SaveIntegrityTests(unittest.TestCase):
+    def test_native_save_failure_survives_missing_com_fallback(self):
+        model = SimpleNamespace(SaveAs3=lambda *args: 7, Extension=object())
+        with patch.dict(sys.modules, {"pythoncom": None}):
+            self.assertEqual(_raw_save_as(model, Path("part.sldprt")), (False, 7, 0))
+
     def test_existing_file_is_not_a_success_signal(self):
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory) / "part.sldprt"

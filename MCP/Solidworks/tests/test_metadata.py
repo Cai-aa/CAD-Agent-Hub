@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import tempfile
+import sys
 import unittest
 from pathlib import Path
+from types import ModuleType
+from unittest.mock import patch
 
 from solidworks_mcp.contracts import ContractError
 from solidworks_mcp.metadata import (
@@ -135,6 +138,22 @@ class FakeApplication:
 
 
 class MetadataTests(unittest.TestCase):
+    def setUp(self) -> None:
+        # These tests exercise the fake object's by-reference contract, not COM.
+        # Keep them independent of a Windows installation and local pywin32.
+        pythoncom = ModuleType("pythoncom")
+        pythoncom.VT_BYREF, pythoncom.VT_BSTR, pythoncom.VT_BOOL = 0x4000, 8, 11
+        client = ModuleType("win32com.client")
+        class Variant:
+            def __init__(self, variant_type, value):
+                self.value = value
+        client.VARIANT = Variant
+        package = ModuleType("win32com")
+        package.client = client
+        bindings = patch.dict(sys.modules, {"pythoncom": pythoncom, "win32com": package, "win32com.client": client})
+        bindings.start()
+        self.addCleanup(bindings.stop)
+
     def test_lists_and_activates_configurations(self) -> None:
         model = FakeModel()
         model.configurations["Machined"] = FakeConfiguration("Machined", "Final state")
@@ -187,7 +206,7 @@ class MetadataTests(unittest.TestCase):
 
     def test_lists_material_databases_and_file_state(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            database = Path(directory) / "materials.sldmat"
+            database = (Path(directory) / "materials.sldmat").resolve()
             database.write_text("<materials />", encoding="utf-8")
             result = list_material_databases(FakeApplication([str(database), "missing.sldmat"]))
 
@@ -198,7 +217,7 @@ class MetadataTests(unittest.TestCase):
     def test_assigns_and_reads_material_for_exact_configuration(self) -> None:
         model = FakeModel()
         with tempfile.TemporaryDirectory() as directory:
-            database = Path(directory) / "materials.sldmat"
+            database = (Path(directory) / "materials.sldmat").resolve()
             database.write_text("<materials />", encoding="utf-8")
             assigned = assign_material(model, str(database), "Alloy Steel")
 
