@@ -1,0 +1,13 @@
+{
+  "EPLAN_WORKSTATION_ROOT": "<absolute-local-dedicated-workspace>",
+  "EPLAN_WORKSTATION_PLAN": "<absolute-path-to-reviewed-native-plan.json>",
+  "EPLAN_WORKSTATION_PLAN_SHA256": "<reviewed-plan-sha256>",
+  "EPLAN_WORKSTATION_DLL": "<absolute-path-to-fingerprint-named-helper.dll>",
+  "EPLAN_WORKSTATION_DLL_SHA256": "<dll-sha256-from-build-receipt>",
+  "EPLAN_WORKSTATION_DLL_MVID": "<assembly-mvid-from-build-receipt>",
+  "EPLAN_WORKSTATION_TIMEOUT_SECONDS": "75",
+  "EPLAN_WORKSTATION_FORMAT_SHA256": "<reviewed-format-plan-sha256>",
+  "EPLAN_WORKSTATION_REBIND_SHA256": "<verified-native-baseline-sha256>",
+  "EPLAN_WORKSTATION_SAFETY_SHA256": "<reviewed-safety-plan-sha256>",
+  "EPLAN_WORKSTATION_NOTES_SHA256": "<reviewed-annotation-plan-sha256>"
+}

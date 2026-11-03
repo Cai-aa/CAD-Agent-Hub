@@ -1,0 +1,4 @@
+interface:
+  display_name: "EPLAN 原生设计与审查"
+  short_description: "通过原生 MCP 绘图与核查接线，输出图纸、布局、BOM 和审查证据"
+  default_prompt: "使用 $eplan-native-design 检查当前 EPLAN 工程的原生连接和逻辑，修复可确认的问题并输出有明确范围的交付文件。"

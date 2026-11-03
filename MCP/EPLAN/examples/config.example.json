@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "workspace": "<absolute-local-private-workspace>",
+  "eplan_exe": "<absolute-path-to-EPLAN.exe>",
+  "help_roots": ["<absolute-local-EPLAN-2.9-Bin-or-help-directory>"],
+  "profile": "review",
+  "timeout_seconds": 65,
+  "expected_build": "2.9.4.14642"
+}

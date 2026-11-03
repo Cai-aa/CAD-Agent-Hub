@@ -1,0 +1,201 @@
+{
+  "success": true,
+  "source": "synthetic_test_fixture_not_native_execution",
+  "project": "SYNTHETIC_EXAMPLE_NOT_A_NATIVE_PROJECT",
+  "build": "2.9.4.14642",
+  "database_id": 1,
+  "pages": [
+    {
+      "name": "/1"
+    }
+  ],
+  "snapshot": {
+    "function_count": 7,
+    "connection_count": 5,
+    "functions": [
+      {
+        "id": "PLC1.Q0.0",
+        "native_key": "1:17:1",
+        "page": "/1",
+        "symbol": "PLCCP",
+        "placed": true,
+        "pins": [
+          {
+            "index": 0,
+            "displayed_designation": "Q0.0",
+            "max_connections": 2,
+            "signal": "DigitalOutput"
+          }
+        ],
+        "address": "Q0.0",
+        "variable": "RUN_REQUEST"
+      },
+      {
+        "id": "PLC1.L",
+        "native_key": "1:17:2",
+        "page": "/1",
+        "symbol": "DCP",
+        "placed": true,
+        "pins": [
+          {
+            "index": 0,
+            "displayed_designation": "3L+",
+            "max_connections": 2,
+            "signal": "Sensor"
+          }
+        ],
+        "address": null,
+        "variable": null
+      },
+      {
+        "id": "PLC1.M",
+        "native_key": "1:17:3",
+        "page": "/1",
+        "symbol": "DCP",
+        "placed": true,
+        "pins": [
+          {
+            "index": 0,
+            "displayed_designation": "3M",
+            "max_connections": 2,
+            "signal": "Sensor"
+          }
+        ],
+        "address": null,
+        "variable": null
+      },
+      {
+        "id": "PS1.L",
+        "native_key": "1:17:4",
+        "page": "/1",
+        "symbol": "DCP",
+        "placed": true,
+        "pins": [
+          {
+            "index": 0,
+            "displayed_designation": "+24V",
+            "max_connections": 2,
+            "signal": "Sensor"
+          }
+        ],
+        "address": null,
+        "variable": null
+      },
+      {
+        "id": "PS1.M",
+        "native_key": "1:17:5",
+        "page": "/1",
+        "symbol": "DCP",
+        "placed": true,
+        "pins": [
+          {
+            "index": 0,
+            "displayed_designation": "0V",
+            "max_connections": 2,
+            "signal": "Sensor"
+          }
+        ],
+        "address": null,
+        "variable": null
+      },
+      {
+        "id": "X1.T1",
+        "native_key": "1:17:6",
+        "page": "/1",
+        "symbol": "X",
+        "placed": true,
+        "pins": [
+          {
+            "index": 0,
+            "displayed_designation": "1",
+            "max_connections": 2,
+            "signal": "Sensor"
+          },
+          {
+            "index": 1,
+            "displayed_designation": "1",
+            "max_connections": 2,
+            "signal": "Sensor"
+          }
+        ],
+        "address": null,
+        "variable": null
+      },
+      {
+        "id": "KA1.COIL",
+        "native_key": "1:17:7",
+        "page": "/1",
+        "symbol": "K",
+        "placed": true,
+        "pins": [
+          {
+            "index": 0,
+            "displayed_designation": "A1",
+            "max_connections": 2,
+            "signal": "Sensor"
+          },
+          {
+            "index": 1,
+            "displayed_designation": "A2",
+            "max_connections": 2,
+            "signal": "Sensor"
+          }
+        ],
+        "address": null,
+        "variable": null
+      }
+    ],
+    "connections": [
+      {
+        "native_key": "1:24:1",
+        "from_id": "PS1.L",
+        "from_pin": 0,
+        "from_native": "1:17:4",
+        "to_id": "PLC1.L",
+        "to_pin": 0,
+        "to_native": "1:17:2",
+        "placed": true
+      },
+      {
+        "native_key": "1:24:2",
+        "from_id": "PS1.M",
+        "from_pin": 0,
+        "from_native": "1:17:5",
+        "to_id": "PLC1.M",
+        "to_pin": 0,
+        "to_native": "1:17:3",
+        "placed": true
+      },
+      {
+        "native_key": "1:24:3",
+        "from_id": "PS1.M",
+        "from_pin": 0,
+        "from_native": "1:17:5",
+        "to_id": "KA1.COIL",
+        "to_pin": 1,
+        "to_native": "1:17:7",
+        "placed": true
+      },
+      {
+        "native_key": "1:24:4",
+        "from_id": "PLC1.Q0.0",
+        "from_pin": 0,
+        "from_native": "1:17:1",
+        "to_id": "X1.T1",
+        "to_pin": 0,
+        "to_native": "1:17:6",
+        "placed": true
+      },
+      {
+        "native_key": "1:24:5",
+        "from_id": "X1.T1",
+        "from_pin": 1,
+        "from_native": "1:17:6",
+        "to_id": "KA1.COIL",
+        "to_pin": 0,
+        "to_native": "1:17:7",
+        "placed": true
+      }
+    ]
+  }
+}

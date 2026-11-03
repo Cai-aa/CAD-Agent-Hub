@@ -1,0 +1,161 @@
+{
+  "schema_version": "eplan-design-intent-1",
+  "devices": [
+    {
+      "tag": "PS1",
+      "kind": "psu",
+      "description_zh": "控制电源直流侧（局部示例）",
+      "part_number": null,
+      "ports": [
+        {
+          "id": "24V",
+          "conductor": "DC24",
+          "required": true,
+          "physical_pin": null
+        },
+        {
+          "id": "0V",
+          "conductor": "DC0",
+          "required": true,
+          "physical_pin": null
+        }
+      ]
+    },
+    {
+      "tag": "PLC1",
+      "kind": "plc",
+      "description_zh": "控制器输出及电源公共端示意",
+      "part_number": null,
+      "ports": [
+        {
+          "id": "L+",
+          "conductor": "DC24",
+          "required": true,
+          "physical_pin": null
+        },
+        {
+          "id": "M",
+          "conductor": "DC0",
+          "required": true,
+          "physical_pin": null
+        },
+        {
+          "id": "Q0.0",
+          "conductor": "SIGNAL",
+          "required": true,
+          "physical_pin": null,
+          "plc_address": "Q0.0"
+        },
+        {
+          "id": "Q0.1",
+          "conductor": "SIGNAL",
+          "required": true,
+          "physical_pin": null,
+          "plc_address": "Q0.1"
+        }
+      ],
+      "io_groups": [
+        {
+          "id": "DO",
+          "channels": [
+            "Q0.0",
+            "Q0.1"
+          ],
+          "common_port": "M",
+          "supply_port": "L+",
+          "common_conductor": "DC0",
+          "type": "PNP"
+        }
+      ]
+    },
+    {
+      "tag": "KA1",
+      "kind": "relay",
+      "description_zh": "正向命令继电器线圈",
+      "part_number": null,
+      "ports": [
+        {
+          "id": "A1",
+          "conductor": "SIGNAL",
+          "required": true,
+          "physical_pin": null
+        },
+        {
+          "id": "A2",
+          "conductor": "DC0",
+          "required": true,
+          "physical_pin": null
+        }
+      ]
+    },
+    {
+      "tag": "KA2",
+      "kind": "relay",
+      "description_zh": "反向命令继电器线圈",
+      "part_number": null,
+      "ports": [
+        {
+          "id": "A1",
+          "conductor": "SIGNAL",
+          "required": true,
+          "physical_pin": null
+        },
+        {
+          "id": "A2",
+          "conductor": "DC0",
+          "required": true,
+          "physical_pin": null
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "W1",
+      "from": "PS1:24V",
+      "to": "PLC1:L+"
+    },
+    {
+      "id": "W2",
+      "from": "PS1:0V",
+      "to": "PLC1:M"
+    },
+    {
+      "id": "W3",
+      "from": "PLC1:Q0.0",
+      "to": "KA1:A1"
+    },
+    {
+      "id": "W4",
+      "from": "PLC1:Q0.1",
+      "to": "KA2:A1"
+    },
+    {
+      "id": "W5",
+      "from": "PS1:0V",
+      "to": "KA1:A2"
+    },
+    {
+      "id": "W6",
+      "from": "PS1:0V",
+      "to": "KA2:A2"
+    }
+  ],
+  "forbidden_pairs": [
+    [
+      "PLC1:Q0.0",
+      "PLC1:Q0.1"
+    ],
+    [
+      "PS1:24V",
+      "PS1:0V"
+    ]
+  ],
+  "forward_reverse": {
+    "forward_output": "PLC1:Q0.0",
+    "reverse_output": "PLC1:Q0.1",
+    "mutual_exclusion": true,
+    "restart_requires_new_start_edge": true,
+    "reversal_requires_standstill": true
+  }
+}

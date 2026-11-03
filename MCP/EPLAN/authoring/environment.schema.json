@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Private environment for the bounded workstation extension only",
+  "type": "object", "additionalProperties": false,
+  "required": ["EPLAN_WORKSTATION_ROOT", "EPLAN_WORKSTATION_PLAN", "EPLAN_WORKSTATION_PLAN_SHA256", "EPLAN_WORKSTATION_DLL", "EPLAN_WORKSTATION_DLL_SHA256"],
+  "properties": {
+    "EPLAN_WORKSTATION_ROOT": {"$ref": "#/$defs/path"},
+    "EPLAN_WORKSTATION_PLAN": {"$ref": "#/$defs/path"},
+    "EPLAN_WORKSTATION_PLAN_SHA256": {"$ref": "#/$defs/sha256"},
+    "EPLAN_WORKSTATION_DLL": {"$ref": "#/$defs/path"},
+    "EPLAN_WORKSTATION_DLL_SHA256": {"$ref": "#/$defs/sha256"},
+    "EPLAN_WORKSTATION_DLL_MVID": {"type": "string", "pattern": "^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$"},
+    "EPLAN_WORKSTATION_TIMEOUT_SECONDS": {"type": "string", "pattern": "^[0-9]+(\\.[0-9]+)?$"},
+    "EPLAN_WORKSTATION_FORMAT_SHA256": {"$ref": "#/$defs/sha256"},
+    "EPLAN_WORKSTATION_REBIND_SHA256": {"$ref": "#/$defs/sha256"},
+    "EPLAN_WORKSTATION_SAFETY_SHA256": {"$ref": "#/$defs/sha256"},
+    "EPLAN_WORKSTATION_NOTES_SHA256": {"$ref": "#/$defs/sha256"}
+  },
+  "$defs": {
+    "path": {"type": "string", "minLength": 1, "pattern": "^(?:[A-Za-z]:[\\\\/]|/(?!/))[^<>]*$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"}
+  }
+}

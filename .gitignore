@@ -51,3 +51,15 @@ artifacts/
 Thumbs.db
 .idea/
 .vscode/
+
+# EPLAN private inputs and native build products
+MCP/EPLAN/private/
+MCP/EPLAN/build/
+MCP/EPLAN/**/bin/
+MCP/EPLAN/**/obj/
+MCP/EPLAN/**/*.dll
+MCP/EPLAN/**/*.pdb
+MCP/EPLAN/**/*.elk
+MCP/EPLAN/**/*.edb/
+MCP/EPLAN/**/*.zw1
+MCP/EPLAN/**/*.sqlite3

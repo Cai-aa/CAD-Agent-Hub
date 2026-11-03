@@ -1,0 +1,72 @@
+{
+  "retrieved_date": "2026-10-26",
+  "method": "GitHub repository search; forks/renames not treated as independent mature implementations; no upstream installed or benchmarked",
+  "repositories": [
+    {
+      "repository": "Canary-ECAD/eplan-mcp",
+      "url": "https://github.com/Canary-ECAD/eplan-mcp",
+      "stars": 129,
+      "forks": 30,
+      "is_fork": false,
+      "license": "MIT",
+      "default_branch": "main",
+      "pushed_at": "2026-10-16T13:38:19Z",
+      "head_sha": "0681c75cb5c2d75cbb6ca0db5e83625fdb1c6f4d"
+    },
+    {
+      "repository": "Canary-ECAD/eplan-scripting-skill",
+      "url": "https://github.com/Canary-ECAD/eplan-scripting-skill",
+      "stars": 5,
+      "forks": 1,
+      "is_fork": false,
+      "license": "MIT",
+      "default_branch": "main",
+      "pushed_at": "2026-10-16T10:42:09Z",
+      "head_sha": "2f717232b27c8c371acf047c8bd4787061888f86"
+    },
+    {
+      "repository": "swater-kankyo/eplan-mcp-oss",
+      "url": "https://github.com/swater-kankyo/eplan-mcp-oss",
+      "stars": 3,
+      "forks": 2,
+      "is_fork": false,
+      "license": "Apache-2.0",
+      "default_branch": "main",
+      "pushed_at": "2026-06-29T06:47:19Z",
+      "head_sha": "a476c0672abff733900524f5df08a4953dc5aa51"
+    },
+    {
+      "repository": "paulinholt/eplan-mcp-bridge",
+      "url": "https://github.com/paulinholt/eplan-mcp-bridge",
+      "stars": 0,
+      "forks": 0,
+      "is_fork": false,
+      "license": "MIT",
+      "default_branch": "main",
+      "pushed_at": "2026-09-15T22:32:38Z",
+      "head_sha": "47ad292ab7ba71667af3419ab23735e39fe0ec6a"
+    },
+    {
+      "repository": "binfen1/Eplan_2026_IA_MCP_scripts",
+      "url": "https://github.com/binfen1/Eplan_2026_IA_MCP_scripts",
+      "stars": 4,
+      "forks": 1,
+      "is_fork": false,
+      "license": "MIT",
+      "default_branch": "main",
+      "pushed_at": "2026-04-11T15:00:41Z",
+      "head_sha": null
+    },
+    {
+      "repository": "bingyongcao/eplan-api-skills",
+      "url": "https://github.com/bingyongcao/eplan-api-skills",
+      "stars": 2,
+      "forks": 0,
+      "is_fork": false,
+      "license": "MIT",
+      "default_branch": "2026",
+      "pushed_at": "2026-09-30T03:07:55Z",
+      "head_sha": null
+    }
+  ]
+}

@@ -11,6 +11,8 @@ Chinese documentation: [README.zh-CN.md](README.zh-CN.md)
 | [`MCP/CATIA`](MCP/CATIA) | CATIA V5 modeling and native Analysis MCP server |
 | [`MCP/Solidworks`](MCP/Solidworks) | Stateful SolidWorks modeling MCP server |
 | [`MCP/UG`](MCP/UG) | Siemens NX/UG MCP server and in-process bridge |
+| [`MCP/EPLAN`](MCP/EPLAN) | EPLAN 2.9 native review MCP, C# Add-in and bounded workstation authoring |
+| [`skills/eplan-native-design`](skills/eplan-native-design) | PLC boxes, commons, terminals and native-connection design/review Skill |
 | [`fusion_electronics_write_bridge`](fusion_electronics_write_bridge) | Local Fusion Electronics write bridge |
 | [`skills/ansys-structural-workbench`](skills/ansys-structural-workbench) | Quality-gated ANSYS Workbench structural-analysis Skill |
 | [`models`](models) | Reproducible build123d/cadpy model source examples |

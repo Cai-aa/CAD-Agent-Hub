@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Reviewed full native snapshot contract independent of a specific EPLAN case",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "project", "native_build", "pages", "functions", "route_groups"],
+  "properties": {
+    "schema_version": {"const": "eplan-native-snapshot-plan-1"},
+    "project": {"type": "string", "minLength": 1, "maxLength": 1000},
+    "native_build": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "pages": {"type": "array", "minItems": 1, "maxItems": 500, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "functions": {"type": "array", "minItems": 1, "maxItems": 5000, "items": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "kind", "page", "symbol", "pins"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1, "maxLength": 150},
+        "kind": {"enum": ["component", "terminal", "plc_channel", "box"]},
+        "page": {"type": "string", "minLength": 1},
+        "symbol": {"type": "string", "minLength": 1},
+        "native_key": {"type": "string", "pattern": "^[0-9]+:[0-9]+:[0-9]+$"},
+        "plc_device": {"type": "string", "minLength": 1},
+        "address": {"type": "string", "pattern": "^%?[IQ][0-9]+\\.[0-7]$"},
+        "variable": {"type": "string", "minLength": 1},
+        "pins": {"type": "array", "maxItems": 1000, "items": {
+          "type": "object", "additionalProperties": false,
+          "required": ["index", "displayed_designation"],
+          "properties": {
+            "index": {"type": "integer", "minimum": 0, "maximum": 1023},
+            "displayed_designation": {"type": "string", "maxLength": 120},
+            "external_wire_limit": {"type": "integer", "minimum": 1, "maximum": 100}
+          }
+        }}
+      },
+      "if": {"properties": {"kind": {"const": "plc_channel"}}},
+      "then": {"required": ["plc_device", "address", "variable"]}
+    }},
+    "route_groups": {"type": "array", "maxItems": 15000, "items": {
+      "type": "object", "additionalProperties": false, "required": ["name", "ends"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1, "maxLength": 150},
+        "ends": {"type": "array", "minItems": 2, "maxItems": 3, "items": {"$ref": "#/$defs/endpoint"}}
+      }
+    }},
+    "terminal_continuities": {"type": "array", "maxItems": 5000, "items": {
+      "type": "array", "minItems": 2, "maxItems": 2, "items": {"$ref": "#/$defs/endpoint"}
+    }},
+    "semantic_model": {"type": "object"},
+    "port_map": {"type": "object", "maxProperties": 10000, "additionalProperties": {"$ref": "#/$defs/endpoint"}}
+  },
+  "dependentRequired": {"semantic_model": ["port_map"], "port_map": ["semantic_model"]},
+  "$defs": {
+    "endpoint": {"type": "object", "additionalProperties": false, "required": ["function_id", "pin_index"],
+      "properties": {"function_id": {"type": "string", "minLength": 1, "maxLength": 150},
+                     "pin_index": {"type": "integer", "minimum": 0, "maximum": 1023}}}
+  }
+}

@@ -1,0 +1,367 @@
+{
+  "schema_version": "eplan-native-snapshot-plan-1",
+  "project": "SYNTHETIC_EXAMPLE_NOT_A_NATIVE_PROJECT",
+  "native_build": "2.9.4.14642",
+  "pages": [
+    "/1"
+  ],
+  "functions": [
+    {
+      "id": "PLC1.Q0.0",
+      "kind": "plc_channel",
+      "page": "/1",
+      "symbol": "PLCCP",
+      "pins": [
+        {
+          "index": 0,
+          "displayed_designation": "Q0.0",
+          "external_wire_limit": 1
+        }
+      ],
+      "plc_device": "PLC1",
+      "address": "Q0.0",
+      "variable": "RUN_REQUEST"
+    },
+    {
+      "id": "PLC1.L",
+      "kind": "component",
+      "page": "/1",
+      "symbol": "DCP",
+      "pins": [
+        {
+          "index": 0,
+          "displayed_designation": "3L+",
+          "external_wire_limit": 2
+        }
+      ]
+    },
+    {
+      "id": "PLC1.M",
+      "kind": "component",
+      "page": "/1",
+      "symbol": "DCP",
+      "pins": [
+        {
+          "index": 0,
+          "displayed_designation": "3M",
+          "external_wire_limit": 2
+        }
+      ]
+    },
+    {
+      "id": "PS1.L",
+      "kind": "component",
+      "page": "/1",
+      "symbol": "DCP",
+      "pins": [
+        {
+          "index": 0,
+          "displayed_designation": "+24V",
+          "external_wire_limit": 2
+        }
+      ]
+    },
+    {
+      "id": "PS1.M",
+      "kind": "component",
+      "page": "/1",
+      "symbol": "DCP",
+      "pins": [
+        {
+          "index": 0,
+          "displayed_designation": "0V",
+          "external_wire_limit": 2
+        }
+      ]
+    },
+    {
+      "id": "X1.T1",
+      "kind": "terminal",
+      "page": "/1",
+      "symbol": "X",
+      "pins": [
+        {
+          "index": 0,
+          "displayed_designation": "1",
+          "external_wire_limit": 2
+        },
+        {
+          "index": 1,
+          "displayed_designation": "1",
+          "external_wire_limit": 2
+        }
+      ]
+    },
+    {
+      "id": "KA1.COIL",
+      "kind": "component",
+      "page": "/1",
+      "symbol": "K",
+      "pins": [
+        {
+          "index": 0,
+          "displayed_designation": "A1",
+          "external_wire_limit": 2
+        },
+        {
+          "index": 1,
+          "displayed_designation": "A2",
+          "external_wire_limit": 2
+        }
+      ]
+    }
+  ],
+  "route_groups": [
+    {
+      "name": "SUPPLY",
+      "ends": [
+        {
+          "function_id": "PS1.L",
+          "pin_index": 0
+        },
+        {
+          "function_id": "PLC1.L",
+          "pin_index": 0
+        }
+      ]
+    },
+    {
+      "name": "RETURN",
+      "ends": [
+        {
+          "function_id": "PS1.M",
+          "pin_index": 0
+        },
+        {
+          "function_id": "PLC1.M",
+          "pin_index": 0
+        },
+        {
+          "function_id": "KA1.COIL",
+          "pin_index": 1
+        }
+      ]
+    },
+    {
+      "name": "CMD_A",
+      "ends": [
+        {
+          "function_id": "PLC1.Q0.0",
+          "pin_index": 0
+        },
+        {
+          "function_id": "X1.T1",
+          "pin_index": 0
+        }
+      ]
+    },
+    {
+      "name": "CMD_B",
+      "ends": [
+        {
+          "function_id": "X1.T1",
+          "pin_index": 1
+        },
+        {
+          "function_id": "KA1.COIL",
+          "pin_index": 0
+        }
+      ]
+    }
+  ],
+  "terminal_continuities": [
+    [
+      {
+        "function_id": "X1.T1",
+        "pin_index": 0
+      },
+      {
+        "function_id": "X1.T1",
+        "pin_index": 1
+      }
+    ]
+  ],
+  "semantic_model": {
+    "schema_version": "eplan-design-intent-1",
+    "devices": [
+      {
+        "tag": "PLC1",
+        "kind": "plc",
+        "description_zh": "合成输出组",
+        "part_number": "TBD",
+        "ports": [
+          {
+            "id": "DO_L",
+            "conductor": "DC24",
+            "physical_pin": "3L+",
+            "required": true,
+            "max_connections": 2
+          },
+          {
+            "id": "DO_M",
+            "conductor": "DC0",
+            "physical_pin": "3M",
+            "required": true,
+            "max_connections": 2
+          },
+          {
+            "id": "Q0.0",
+            "conductor": "SIGNAL",
+            "physical_pin": "Q0.0",
+            "required": true,
+            "max_connections": 2,
+            "plc_address": "Q0.0"
+          }
+        ],
+        "io_groups": [
+          {
+            "id": "OUT",
+            "type": "PNP",
+            "channels": [
+              "Q0.0"
+            ],
+            "common_port": "DO_M",
+            "supply_port": "DO_L",
+            "common_conductor": "DC0"
+          }
+        ]
+      },
+      {
+        "tag": "PS1",
+        "kind": "psu",
+        "description_zh": "合成电源",
+        "part_number": "TBD",
+        "ports": [
+          {
+            "id": "PLUS",
+            "conductor": "DC24",
+            "physical_pin": "+24V",
+            "required": true,
+            "max_connections": 2
+          },
+          {
+            "id": "MINUS",
+            "conductor": "DC0",
+            "physical_pin": "0V",
+            "required": true,
+            "max_connections": 2
+          }
+        ]
+      },
+      {
+        "tag": "X1",
+        "kind": "terminal",
+        "description_zh": "合成贯通端子",
+        "part_number": "TBD",
+        "ports": [
+          {
+            "id": "P0",
+            "conductor": "DC24",
+            "physical_pin": "1",
+            "required": true,
+            "max_connections": 2
+          },
+          {
+            "id": "P1",
+            "conductor": "DC24",
+            "physical_pin": "1",
+            "required": true,
+            "max_connections": 2
+          }
+        ]
+      },
+      {
+        "tag": "KA1",
+        "kind": "relay",
+        "description_zh": "合成接口线圈",
+        "part_number": "TBD",
+        "ports": [
+          {
+            "id": "A1",
+            "conductor": "DC24",
+            "physical_pin": "A1",
+            "required": true,
+            "max_connections": 2
+          },
+          {
+            "id": "A2",
+            "conductor": "DC0",
+            "physical_pin": "A2",
+            "required": true,
+            "max_connections": 2
+          }
+        ]
+      }
+    ],
+    "connections": [
+      {
+        "id": "W1",
+        "from": "PS1:PLUS",
+        "to": "PLC1:DO_L"
+      },
+      {
+        "id": "W2",
+        "from": "PS1:MINUS",
+        "to": "PLC1:DO_M"
+      },
+      {
+        "id": "W3",
+        "from": "PS1:MINUS",
+        "to": "KA1:A2"
+      },
+      {
+        "id": "W4",
+        "from": "PLC1:Q0.0",
+        "to": "X1:P0"
+      },
+      {
+        "id": "W5",
+        "from": "X1:P0",
+        "to": "X1:P1"
+      },
+      {
+        "id": "W6",
+        "from": "X1:P1",
+        "to": "KA1:A1"
+      }
+    ]
+  },
+  "port_map": {
+    "PLC1:DO_L": {
+      "function_id": "PLC1.L",
+      "pin_index": 0
+    },
+    "PLC1:DO_M": {
+      "function_id": "PLC1.M",
+      "pin_index": 0
+    },
+    "PLC1:Q0.0": {
+      "function_id": "PLC1.Q0.0",
+      "pin_index": 0
+    },
+    "PS1:PLUS": {
+      "function_id": "PS1.L",
+      "pin_index": 0
+    },
+    "PS1:MINUS": {
+      "function_id": "PS1.M",
+      "pin_index": 0
+    },
+    "X1:P0": {
+      "function_id": "X1.T1",
+      "pin_index": 0
+    },
+    "X1:P1": {
+      "function_id": "X1.T1",
+      "pin_index": 1
+    },
+    "KA1:A1": {
+      "function_id": "KA1.COIL",
+      "pin_index": 0
+    },
+    "KA1:A2": {
+      "function_id": "KA1.COIL",
+      "pin_index": 1
+    }
+  }
+}

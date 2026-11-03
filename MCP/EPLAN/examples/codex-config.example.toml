@@ -1,0 +1,9 @@
+[mcp_servers.eplan29_lab]
+command = "<absolute-path-to-python-with-this-package-installed>"
+args = ["-m", "eplan_mcp"]
+startup_timeout_sec = 60
+
+[mcp_servers.eplan29_lab.env]
+EPLAN_MCP_CONFIG = "<absolute-path-to-private-eplan-config.json>"
+PYTHONUTF8 = "1"
+PYTHONIOENCODING = "utf-8"

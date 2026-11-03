@@ -1,0 +1,18 @@
+# Placeholders only. Read the pinned upstream installation instructions first.
+# Merge this as a separate server; keep the independent legacy/review servers.
+[mcp_servers.eplan_authoring]
+command = "<absolute-path-to-Canary-python>"
+args = ["<absolute-path-to-Canary-server-entry.py>"]
+startup_timeout_sec = 60
+
+[mcp_servers.eplan_authoring.env]
+EPLAN_PLATFORM_ROOT = "<absolute-local-EPLAN-Platform-directory>"
+EPLAN_MCP_MODE = "discovery"
+EPLAN_MCP_JSON_MODE = "portable"
+EPLAN_MCP_EXTENSIONS = "<absolute-path-to-this-authoring-directory>"
+EPLAN_MCP_SCRATCH = "<absolute-local-private-scratch>"
+EPLAN_MCP_LOG_DIR = "<absolute-local-run-log-directory>"
+PYTHONUTF8 = "1"
+PYTHONIOENCODING = "utf-8"
+# Fill the EPLAN_WORKSTATION_* environment values using environment.example.json
+# and the local build receipt. They are intentionally not populated here.
