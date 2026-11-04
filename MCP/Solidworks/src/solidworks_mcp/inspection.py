@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .contracts import ContractError, require_text
+from .safety import same_com_object
 
 
 DOCUMENT_TYPE_NAMES = {
@@ -52,17 +53,16 @@ def document_summary(document: Any, *, active: bool = False) -> dict[str, Any]:
     }
 
 
-def list_documents(documents: Iterable[Any], active_document: Any | None) -> dict[str, Any]:
+def list_documents(
+    documents: Iterable[Any], active_document: Any | None
+) -> dict[str, Any]:
     items = [
-        document_summary(document, active=document is active_document)
+        document_summary(document, active=same_com_object(document, active_document))
         for document in documents
     ]
     active_title = None
     if active_document is not None:
         active_title = str(_com_value(active_document, "GetTitle"))
-        for item in items:
-            if item["title"] == active_title:
-                item["active"] = True
     return {
         "ok": True,
         "document_count": len(items),
@@ -73,15 +73,23 @@ def list_documents(documents: Iterable[Any], active_document: Any | None) -> dic
 
 def activate_document(app: Any, title: str, documents: Iterable[Any]) -> dict[str, Any]:
     requested = require_text(title, "title")
-    available = {
-        str(_com_value(document, "GetTitle")): document
-        for document in documents
-    }
+    opened = list(documents)
+    matches = [
+        document
+        for document in opened
+        if str(_com_value(document, "GetTitle")) == requested
+    ]
+    available = {str(_com_value(document, "GetTitle")) for document in opened}
     if requested not in available:
         raise ContractError(
             f"No open SolidWorks document is titled '{requested}'. "
             f"Available documents: {', '.join(sorted(available)) or '<none>'}"
         )
+    if len(matches) != 1:
+        raise ContractError(
+            "Document title is ambiguous; activation refused. Use unique document filenames."
+        )
+    target = matches[0]
 
     activated = None
     attempts: list[str] = []
@@ -97,12 +105,15 @@ def activate_document(app: Any, title: str, documents: Iterable[Any]) -> dict[st
             else:
                 activated = result
             activated = getattr(app, "ActiveDoc", None) or activated
-            if activated is not None:
+            if activated is not None and same_com_object(activated, target):
                 break
+            activated = None
         except Exception as exc:
             attempts.append(f"{method_name}: {type(exc).__name__}: {exc}")
     if activated is None:
-        raise RuntimeError("SolidWorks could not activate the document; " + "; ".join(attempts))
+        raise RuntimeError(
+            "SolidWorks could not activate the document; " + "; ".join(attempts)
+        )
 
     summary = document_summary(activated, active=True)
     if summary["title"] != requested:

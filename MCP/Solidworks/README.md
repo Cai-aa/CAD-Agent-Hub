@@ -1,5 +1,73 @@
 # SolidWorks Agent MCP
 
+## 0.6 drawing workflow and reusable modeling rules
+
+新增[PDF工程图证据流程](../DrawingModeling/README.md)、[配置模板](examples/codex-config.example.toml)、
+[建模Skill](../../skills/solidworks-cad-agent/SKILL.md)和[识图Skill](../../skills/solidworks-drawing-modeling/SKILL.md)。
+图的稳定name与中文display_name分离，引用统一映射并返回name_map；使用metadata.tree_language或
+SOLIDWORKS_FEATURE_LANGUAGE配置默认语言。独立编辑仍需查询实际原生特征名/完整尺寸名。
+支持固定三点参考面、模型坐标草图与两截面切除放样；固定面不冒充尺寸关联面。
+新增solidworks_review_feature_graph离线复核，返回geometry_verified=false；有限斜切侧边界、
+放样对应和圆角/倒角交界仍需要实际局部截面证据。
+参阅[通用规范](docs/modeling-guidelines.zh-CN.md)与[验证及兼容边界](docs/hardening-and-validation.zh-CN.md)。
+MCP启动项属于TOML，Skill正文位于独立SKILL.md；Windows写入器检查UTF-8/LF实际字节，避免CRCRLF。
+
+
+## 0.5 integrity patch
+
+Existing-document mutations now require a `document_token`. Inspect the active
+document, then call `solidworks_bind_document(title, expected_path)` and pass the
+returned token to each write. New/create/open tools return their own binding.
+A title, path, configuration or COM object change causes the write to be refused.
+Duplicate open titles cannot be activated by guessing. Graph execution checks the
+active document between feature steps.
+
+```json
+{"title":"part.SLDPRT","expected_path":"<output-directory>/part.SLDPRT"}
+```
+
+Then, for example:
+
+```json
+{"dimension_name":"D1@CylinderBoss","value":30,"unit":"mm","document_token":"TOKEN_FROM_BIND","request_id":"unique-edit-id"}
+```
+
+Changes in this local patch:
+
+- SaveAs3 integer error codes are interpreted correctly. Existing outputs are
+  refused by default. `save_active` and `export_active` accept `overwrite=true`
+  explicitly; retained copies in `.swmcp-backups` allow recovery. Partial saves are
+  removed/restored on reported failure. This is not an atomic CAD/filesystem transaction.
+- Rebuild, actual features/errors, positive solid volume and body count are
+  checked before saving. Block/cylinder/tube generators also verify analytic volume.
+- Dimension setters check the native status and read back the requested value.
+- Mutation IDs bind the public operation, parameters and document token. A SQLite
+  journal preserves success/failure/unknown outcomes across MCP restarts. Query
+  `solidworks_operation_result(request_id)` after timeouts; COM is not cancelled.
+- Failed incremental edits cannot be replayed and block further writes. Inspect
+  the model before `bind_document(..., acknowledge_partial_changes=true)`.
+  Undo groups are visible; automatic rollback is deliberately not claimed because
+  not every SolidWorks API action is undoable. Sketch replacement creates the
+  new geometry before deleting the old segments.
+- STA admission is atomic; busy shutdown is rejected; hot reload is retired.
+  Patched processes share an OS file lock. Other automation and the human UI do
+  not participate in that cooperative lock.
+- Non-finite geometry, invalid reference types and oversized feature/pattern
+  inputs are rejected. Persistent edge/face references are scoped to saved documents.
+- Single-document mode never automatically closes an existing user document.
+- The non-involute conceptual gear execution endpoint is retired. Use the native
+  involute tool; finishing and manufacturing validation remain separate concerns.
+- This release pins MCP SDK 1.x (`>=1.27.1,<2`), the branch actually tested here.
+
+Run the offline suite as documented below. For real CAD acceptance:
+
+```powershell
+python scripts/validate_integrity_live.py --output-dir C:\new\unique-test-directory
+```
+
+The script creates new native test parts and tests error refusal. Supply the
+correct `SOLIDWORKS_PART_TEMPLATE` for your installation; it does not close user work.
+
 面向 Codex、Claude、Cursor 等 MCP 客户端的本地 SolidWorks 交互建模服务器。
 
 The server supports fast incremental edits on the active document as well as native parametric part creation.
@@ -286,8 +354,7 @@ TipChamfer
 
 ## 安装 / Install
 
-兼容 MCP Python SDK 1.x 与 2.x。SDK 2.x 使用公开的 `mcp.server.MCPServer`，
-SDK 1.x 自动回退到 `mcp.server.fastmcp.FastMCP`。
+本地 0.5 补丁固定使用已验证的 MCP Python SDK 1.x；不再宣称未验证的 SDK 2.x 兼容性。
 
 使用已安装依赖的 Python 环境：
 

@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import array
 import base64
+import json
 import math
+import os
 from typing import Any
 
-from .contracts import ContractError, require_positive, require_text
+from .contracts import ContractError, require_positive, require_text, require_finite
 from .feature_graph import _sketch_entities
 from .native_features import (
     MM,
@@ -92,8 +94,7 @@ def set_dimension(
     rebuild: bool = True,
 ) -> dict[str, Any]:
     dimension_name = require_text(dimension_name, "dimension_name")
-    if not isinstance(value, (int, float)) or isinstance(value, bool):
-        raise ContractError("value must be a number")
+    value = require_finite(value, "value")
     normalized_unit = str(unit).strip().lower()
     if normalized_unit not in _UNIT_TO_SYSTEM:
         raise ContractError(f"unit must be one of: {', '.join(_UNIT_TO_SYSTEM)}")
@@ -101,12 +102,16 @@ def set_dimension(
     if normalized_configuration not in _CONFIGURATION_OPTIONS:
         raise ContractError("configuration must be this, all, or specific")
     if normalized_configuration == "specific" and not configuration_names:
-        raise ContractError("configuration_names is required when configuration= specific")
+        raise ContractError(
+            "configuration_names is required when configuration= specific"
+        )
 
     dimension = _dimension(model, dimension_name)
     old_system = _dimension_system_value(dimension)
     new_system = float(value) * _UNIT_TO_SYSTEM[normalized_unit]
-    config_argument: Any = configuration_names if normalized_configuration == "specific" else None
+    config_argument: Any = (
+        configuration_names if normalized_configuration == "specific" else None
+    )
     status = _com_value(
         dimension,
         "SetSystemValue3",
@@ -114,8 +119,17 @@ def set_dimension(
         _CONFIGURATION_OPTIONS[normalized_configuration],
         config_argument,
     )
+    if not isinstance(status, int) or isinstance(status, bool) or status != 0:
+        raise RuntimeError(f"SetSystemValue3 rejected the dimension (status={status})")
     if rebuild:
-        _com_value(model, "EditRebuild3")
+        rebuild_model(model)
+    actual_system = _dimension_system_value(dimension)
+    if actual_system is None or not math.isclose(
+        actual_system, new_system, rel_tol=1e-8, abs_tol=1e-10
+    ):
+        raise RuntimeError(
+            f"Dimension readback differs from requested value: {actual_system} != {new_system}"
+        )
     return {
         "ok": True,
         "dimension": dimension_name,
@@ -146,9 +160,10 @@ def set_feature_parameter(
     return result
 
 
-def _delete_active_sketch_segments(model: Any, manager: Any) -> int:
-    sketch = _com_value(manager, "ActiveSketch")
-    segments = _as_list(_com_value(sketch, "GetSketchSegments"))
+def _delete_active_sketch_segments(model: Any, manager: Any, segments=None) -> int:
+    if segments is None:
+        sketch = _com_value(manager, "ActiveSketch")
+        segments = _as_list(_com_value(sketch, "GetSketchSegments"))
     if not segments:
         return 0
     model.ClearSelection2(True)
@@ -159,6 +174,11 @@ def _delete_active_sketch_segments(model: Any, manager: Any) -> int:
         except Exception:
             ok = bool(_com_value(segment, "Select", True))
         selected += int(ok)
+    if selected != len(segments):
+        model.ClearSelection2(True)
+        raise RuntimeError(
+            "Not all intended sketch segments could be selected; deletion refused"
+        )
     if selected and not bool(_com_value(model.Extension, "DeleteSelection2", 0)):
         raise RuntimeError("SolidWorks could not delete the selected sketch segments")
     return selected
@@ -253,9 +273,14 @@ def edit_sketch(
             manager.DisplayWhenAdded = False
         except Exception:
             pass
+        old_segments = None
         if normalized_mode == "replace":
-            deleted = _delete_active_sketch_segments(model, manager)
+            sketch = _com_value(manager, "ActiveSketch")
+            old_segments = _as_list(_com_value(sketch, "GetSketchSegments"))
+        # Preserve all old geometry until every new entity has been created.
         created = _append_entities(model, manager, normalized_entities)
+        if old_segments is not None:
+            deleted = _delete_active_sketch_segments(model, manager, old_segments)
     finally:
         for name, value in previous.items():
             try:
@@ -264,7 +289,7 @@ def edit_sketch(
                 pass
         model.InsertSketch2(True)
     if rebuild:
-        _com_value(model, "EditRebuild3")
+        rebuild_model(model)
     return {
         "ok": True,
         "sketch": sketch_name,
@@ -293,7 +318,7 @@ def delete_feature(
     if not deleted:
         raise RuntimeError(f"SolidWorks could not delete feature: {feature_name}")
     if rebuild:
-        _com_value(model, "EditRebuild3")
+        rebuild_model(model)
     return {
         "ok": True,
         "feature": feature_name,
@@ -325,24 +350,56 @@ def _persist_token(model: Any, entity: Any) -> str | None:
             payload = bytes(raw)
         else:
             payload = bytes(int(value) & 0xFF for value in raw)
-        return base64.urlsafe_b64encode(payload).decode("ascii")
+        envelope = {
+            "version": 1,
+            "document": _reference_owner(model),
+            "reference": base64.urlsafe_b64encode(payload).decode("ascii"),
+        }
+        return base64.urlsafe_b64encode(
+            json.dumps(envelope, sort_keys=True).encode("utf-8")
+        ).decode("ascii")
     except Exception:
         return None
 
 
 def _decode_token(token: str) -> bytes:
     try:
-        return base64.urlsafe_b64decode(require_text(token, "reference_token").encode("ascii"))
+        token = require_text(token, "reference_token")
+        if len(token) > 16384:
+            raise ValueError("reference token exceeds 16 KiB")
+        return base64.b64decode(token.encode("ascii"), altchars=b"-_", validate=True)
     except Exception as exc:
         raise ContractError(f"Invalid persistent reference token: {exc}") from exc
 
 
+def _reference_owner(model: Any) -> str:
+    path = str(_com_value(model, "GetPathName"))
+    if not path:
+        raise ContractError(
+            "Save the document before requesting persistent face/edge references"
+        )
+    return os.path.normcase(os.path.abspath(path))
+
+
 def _resolve_token(model: Any, token: str) -> tuple[Any, int]:
-    payload = _decode_token(token)
+    try:
+        envelope = json.loads(_decode_token(token))
+        if envelope.get("version") != 1 or envelope.get("document") != _reference_owner(
+            model
+        ):
+            raise ValueError(
+                "reference belongs to another document or an unsupported token version"
+            )
+        payload = _decode_token(envelope["reference"])
+    except (ValueError, TypeError, KeyError, AttributeError) as exc:
+        raise ContractError(
+            f"Refresh the persistent reference in the intended document: {exc}"
+        ) from exc
     extension = model.Extension
     try:
         import pythoncom  # type: ignore
         from win32com.client import VARIANT  # type: ignore
+
         error = VARIANT(pythoncom.VT_BYREF | pythoncom.VT_I4, 0)
         entity = extension.GetObjectByPersistReference3(payload, error)
         return entity, int(error.value)
@@ -360,7 +417,7 @@ def select_references(model: Any, reference_tokens: list[str]) -> dict[str, Any]
     errors = []
     for index, token in enumerate(reference_tokens):
         entity, error = _resolve_token(model, token)
-        if entity is None:
+        if entity is None or error != 0:
             errors.append({"index": index, "error_code": error})
         else:
             entities.append(entity)
@@ -386,7 +443,9 @@ def add_edge_feature(
     size_mm = require_positive(size_mm, "size_mm")
     select_result = select_references(model, reference_tokens)
     if normalized_kind == "fillet":
-        feature = model.FeatureManager.FeatureFillet(195, size_mm * MM, 0, 0, None, None, None)
+        feature = model.FeatureManager.FeatureFillet(
+            195, size_mm * MM, 0, 0, None, None, None
+        )
     else:
         angle_deg = require_positive(angle_deg, "angle_deg")
         feature = model.FeatureManager.InsertFeatureChamfer(
@@ -394,7 +453,7 @@ def add_edge_feature(
         )
     rename_feature(feature, feature_name)
     if rebuild:
-        _com_value(model, "EditRebuild3")
+        rebuild_model(model)
     return {
         "ok": True,
         "kind": normalized_kind,

@@ -36,6 +36,9 @@ class _ExportModel:
     def SaveAs3(self, *args):
         raise AssertionError("foreign exports must not use native SaveAs3")
 
+    def ClearSelection2(self, clear):
+        self.selection_cleared = clear
+
 
 class SaveRoutingTests(unittest.TestCase):
     def test_native_document_uses_save_as_3_only(self) -> None:

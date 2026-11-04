@@ -1,13 +1,25 @@
 from __future__ import annotations
 
-import math
+import os
+import uuid
 from pathlib import Path
 from typing import Any
+from . import __version__
 
+from .safety import (
+    SafetyError,
+    document_context,
+    request_context,
+    request_operation,
+    same_com_object,
+)
+from .file_safety import protected_output
+from .verification import verify_model, analytic_volume
 from .com_runtime import SolidWorksSession
 from .config import Settings
-from .contracts import ContractError, require_positive, require_text
+from .contracts import ContractError, require_text
 from .feature_graph import compile_feature_graph
+from .modeling_rules import review_feature_graph
 from .gearbox import build_two_stage_reducer_graph
 from .involute_gear import build_involute_gear_graph, validate_gear_spec
 from .output_shaft import build_output_shaft_from_dwg_graph
@@ -45,8 +57,14 @@ from .part_generators import build_parametric_part_graph
 from .primitives import build_sphere_graph
 
 _EXPORT_TYPES = {
-    ".step": 214, ".stp": 214, ".iges": 214, ".igs": 214, ".stl": 214,
-    ".pdf": 214, ".dxf": 214, ".dwg": 214,
+    ".step": 214,
+    ".stp": 214,
+    ".iges": 214,
+    ".igs": 214,
+    ".stl": 214,
+    ".pdf": 214,
+    ".dxf": 214,
+    ".dwg": 214,
 }
 
 _MCP_FEATURE_MARKERS = {
@@ -69,22 +87,61 @@ def _com_value(obj: Any, name: str, *args: Any) -> Any:
     return member(*args) if callable(member) else member
 
 
-def _save_as(model: Any, target: Path) -> tuple[bool, int, int]:
+def _raw_save_as(model: Any, target: Path) -> tuple[bool, int, int]:
     """Route native saves and foreign exports through separate COM paths."""
     if target.suffix.lower() in _NATIVE_DOCUMENT_EXTENSIONS:
         try:
             result = model.SaveAs3(str(target), 0, 1)
         except Exception as exc:
-            raise RuntimeError(f"native SaveAs3 failed: {type(exc).__name__}: {exc}") from exc
-        if target.exists() and target.stat().st_size > 0:
-            return True, 0, 0
-        return bool(result), 0 if result else 1, 0
+            raise RuntimeError(
+                f"native SaveAs3 failed: {type(exc).__name__}: {exc}"
+            ) from exc
+        # Legacy ModelDoc2.SaveAs3 returns an integer error code, 0 on success.
+        # A bool is a distinct binding contract and must not be inverted.
+        if isinstance(result, bool) and result:
+            return True,0,0
+        if isinstance(result, int):
+            if result == 0 and not isinstance(result,bool):
+                return True,0,0
+            # Preserve the native failure when no COM fallback is available;
+            # importing pywin32 must not replace it with an unrelated error.
+            if getattr(model, "Extension", None) is None:
+                return False, int(result) or 1, 0
+            try:
+                import pythoncom
+                from win32com.client import VARIANT
+            except ImportError:
+                return False, int(result) or 1, 0
+            errors=VARIANT(pythoncom.VT_BYREF|pythoncom.VT_I4,0)
+            warnings=VARIANT(pythoncom.VT_BYREF|pythoncom.VT_I4,0)
+            empty=VARIANT(pythoncom.VT_DISPATCH,None)
+            for arguments in [(str(target),0,1,empty),(str(target),0,1,empty,0,0),(str(target),0,1,empty,errors,warnings)]:
+                try:
+                    value=model.Extension.SaveAs(*arguments)
+                    if isinstance(value,tuple):
+                        if bool(value[0]) and int(value[1])==0:
+                            return True,0,int(value[2])
+                        continue
+                    if bool(value) and int(errors.value)==0:
+                        return True,0,int(warnings.value)
+                except Exception:
+                    continue
+            return False,int(result) or 1,0
+        raise SafetyError("SAVE_CONTRACT", "Unrecognized native SaveAs3 return value")
 
     # makepy-generated wrappers accept plain integers for [out] parameters and
     # return (ok, errors, warnings); dynamic Dispatch requires explicit by-ref
     # VARIANTs. Support both because SolidWorks may return either proxy type.
     generated_errors: list[str] = []
+    try:
+        import pythoncom
+        from win32com.client import VARIANT
+        empty_export_data = VARIANT(pythoncom.VT_DISPATCH, None)
+    except ImportError:
+        empty_export_data = None
     for arguments in (
+        (str(target), 0, 1, empty_export_data),
+        (str(target), 0, 1, empty_export_data, 0, 0),
         (str(target), 0, 1, None),
         (str(target), 0, 1, None, 0, 0),
     ):
@@ -97,19 +154,40 @@ def _save_as(model: Any, target: Path) -> tuple[bool, int, int]:
                 return ok, errors_value, warnings_value
             return bool(result), 0, 0
         except Exception as exc:
-            generated_errors.append(f"{len(arguments)} args: {type(exc).__name__}: {exc}")
+            generated_errors.append(
+                f"{len(arguments)} args: {type(exc).__name__}: {exc}"
+            )
     try:
         import pythoncom  # type: ignore
         from win32com.client import VARIANT  # type: ignore
+
         errors = VARIANT(pythoncom.VT_BYREF | pythoncom.VT_I4, 0)
         warnings = VARIANT(pythoncom.VT_BYREF | pythoncom.VT_I4, 0)
-        ok = bool(model.Extension.SaveAs(str(target), 0, 1, None, errors, warnings))
+        ok = bool(model.Extension.SaveAs(str(target), 0, 1, empty_export_data, errors, warnings))
         return ok, int(errors.value), int(warnings.value)
     except Exception as exc:
         raise RuntimeError(
-            "Export SaveAs binding attempts failed; " + "; ".join(generated_errors)
+            "Export SaveAs binding attempts failed; "
+            + "; ".join(generated_errors)
             + f"; dynamic by-ref: {type(exc).__name__}: {exc}"
         ) from exc
+
+
+def _save_as(
+    model: Any, target: Path, overwrite: bool = False
+) -> tuple[bool, int, int]:
+    with protected_output(target, overwrite):
+        # SolidWorks exports selected entities only when a selection is active.
+        # Always export the complete explicitly bound model.
+        if target.suffix.lower() not in _NATIVE_DOCUMENT_EXTENSIONS:
+            model.ClearSelection2(True)
+        ok, errors, warnings = _raw_save_as(model, target)
+        if not ok or errors:
+            raise SafetyError(
+                "SAVE_FAILED",
+                f"SolidWorks save failed (errors={errors}, warnings={warnings})",
+            )
+    return True, 0, warnings
 
 
 class SolidWorksExecutor:
@@ -120,7 +198,11 @@ class SolidWorksExecutor:
         # One-argument construction remains compatible with an already-running
         # pre-0.3 com_runtime module during hot reload. New runtimes expose the
         # timeout attribute and receive the configured value immediately.
-        self.session = SolidWorksSession(self.settings.operation_cache_size)
+        self.session = SolidWorksSession(
+            self.settings.operation_cache_size,
+            operation_timeout_seconds=self.settings.operation_timeout_seconds,
+            journal_path=self.settings.operation_journal_path,
+        )
         if hasattr(self.session, "_operation_timeout_seconds"):
             self.session._operation_timeout_seconds = getattr(
                 self.settings, "operation_timeout_seconds", 180.0
@@ -130,9 +212,97 @@ class SolidWorksExecutor:
         # returned ModelDoc proxy is valid and remains the authoritative handle.
         self._active_document: Any | None = None
         self._owned_document_titles: set[str] = set()
+        self._bound_model = None
+        self._bound_identity = None
+        self._document_token = None
+        self._recovery_required = False
+
+    def _identity(self, model: Any) -> dict[str, Any]:
+        path = str(_com_value(model, "GetPathName"))
+        kind = int(_com_value(model, "GetType"))
+        configuration = ""
+        if kind in (1, 2):
+            configuration = str(model.ConfigurationManager.ActiveConfiguration.Name)
+        return {
+            "path": os.path.normcase(os.path.abspath(path)) if path else "",
+            "title": str(_com_value(model, "GetTitle")),
+            "configuration": configuration,
+            "document_type": kind,
+        }
+
+    def _bind_model(self, model: Any) -> dict[str, Any]:
+        self._bound_model = model
+        self._bound_identity = self._identity(model)
+        self._document_token = str(uuid.uuid4())
+        self._active_document = model
+        return {
+            "document_token": self._document_token,
+            "document_identity": self._bound_identity.copy(),
+        }
 
     def _active_model(self, app: Any) -> Any:
-        return getattr(app, "ActiveDoc", None) or self._active_document
+        model = getattr(app, "ActiveDoc", None)
+        context = request_context.get()
+        if context and context["mutating"]:
+            token = document_context.get()
+            if (
+                not token
+                or token != self._document_token
+                or model is None
+                or self._bound_model is None
+            ):
+                raise SafetyError(
+                    "DOCUMENT_NOT_BOUND",
+                    "Bind the intended active document and supply its document_token",
+                )
+            if (
+                not same_com_object(model, self._bound_model)
+                or self._identity(model) != self._bound_identity
+            ):
+                raise SafetyError(
+                    "DOCUMENT_CHANGED",
+                    "Active document or configuration changed; write refused",
+                )
+            if self._recovery_required:
+                raise SafetyError(
+                    "RECOVERY_REQUIRED",
+                    "Previous mutation failed; inspect and explicitly acknowledge partial changes when rebinding",
+                )
+        return model
+
+    @request_operation
+    def bind_document(
+        self,
+        request_id: str,
+        title: str,
+        expected_path: str | None = None,
+        acknowledge_partial_changes: bool = False,
+    ) -> dict[str, Any]:
+        def action(app):
+            model = getattr(app, "ActiveDoc", None)
+            if model is None or str(_com_value(model, "GetTitle")) != require_text(
+                title, "title"
+            ):
+                raise SafetyError(
+                    "DOCUMENT_CHANGED",
+                    "The exact intended title is not the active document",
+                )
+            if expected_path is not None:
+                actual = self._identity(model)["path"]
+                if actual != os.path.normcase(os.path.abspath(expected_path)):
+                    raise SafetyError(
+                        "DOCUMENT_CHANGED",
+                        "The active document path does not match expected_path",
+                    )
+            if self._recovery_required and not acknowledge_partial_changes:
+                raise SafetyError(
+                    "RECOVERY_REQUIRED",
+                    "Inspect the failed edit before acknowledging partial changes",
+                )
+            self._recovery_required = False
+            return {"ok": True, **self._bind_model(model)}
+
+        return self.session.execute(request_id, action)
 
     def _new_part_document(self, app: Any) -> Any:
         template = self.settings.part_template
@@ -145,6 +315,13 @@ class SolidWorksExecutor:
         # ActiveDoc yields the documented IModelDoc2 interface (SketchManager,
         # FeatureManager, SelectionManager) on late-bound pywin32 hosts.
         active_model = getattr(app, "ActiveDoc", None)
+        if active_model is not None and not same_com_object(
+            active_model, created_model
+        ):
+            raise SafetyError(
+                "DOCUMENT_CHANGED",
+                "Active document is not the document just created; modeling refused",
+            )
         model = active_model or created_model
         self._active_document = model
         try:
@@ -175,6 +352,13 @@ class SolidWorksExecutor:
                 document = _com_value(document, "GetNext")
             return documents
 
+    def _require_active_instance(self, app: Any, model: Any) -> None:
+        if not same_com_object(getattr(app, "ActiveDoc", None), model):
+            raise SafetyError(
+                "DOCUMENT_CHANGED",
+                "Active document changed during execution; operation stopped",
+            )
+
     def _document_path(self, document: Any) -> str:
         try:
             return str(_com_value(document, "GetPathName"))
@@ -190,54 +374,23 @@ class SolidWorksExecutor:
 
     def _prepare_single_document_test(self, app: Any) -> list[str]:
         """Leave zero open documents before a test without touching user work."""
-        closed: list[str] = []
-        try:
-            documents = self._open_documents(app)
-        except Exception as exc:
-            raise RuntimeError(
-                f"Single-document test mode could not enumerate open documents: {exc}"
-            ) from exc
-
-        blockers: list[str] = []
-        for document in documents:
-            try:
-                title = str(_com_value(document, "GetTitle"))
-                path = self._document_path(document)
-                names = {item["name"] for item in feature_names(document)}
-                is_mcp_document = bool(names.intersection(_MCP_FEATURE_MARKERS)) or title in self._owned_document_titles
-                if not is_mcp_document:
-                    blockers.append(f"{title} (user/unmanaged document)")
-                    continue
-                if path and self._document_is_dirty(document):
-                    blockers.append(f"{title} (MCP document has unsaved changes)")
-                    continue
-                app.CloseDoc(title)
-                closed.append(title)
-                self._owned_document_titles.discard(title)
-            except Exception as exc:
-                blockers.append(f"<unreadable document: {type(exc).__name__}: {exc}>")
-
-        if blockers:
-            raise RuntimeError(
-                "Single-document test mode refused to create another SolidWorks document. "
-                "Save/close these documents first: " + "; ".join(blockers)
+        if self._open_documents(app):
+            raise ContractError(
+                "Single-document mode requires zero open documents; automatic document closing has been removed"
             )
-
-        try:
-            remaining = int(_com_value(app, "GetDocumentCount"))
-        except (AttributeError, TypeError):
-            remaining = len(self._open_documents(app))
-        if remaining != 0:
-            raise RuntimeError(
-                f"Single-document test mode expected zero documents before NewDocument, found {remaining}"
-            )
-        self._active_document = None
-        return closed
+        return []
 
     def _close_failed_document(self, app: Any, model: Any) -> None:
         try:
             try:
                 title = str(_com_value(model, "GetTitle"))
+                matching = [
+                    document
+                    for document in self._open_documents(app)
+                    if str(_com_value(document, "GetTitle")) == title
+                ]
+                if len(matching) != 1 or not same_com_object(matching[0], model):
+                    return  # Never close a different model merely sharing a title.
                 app.CloseDoc(title)
                 self._owned_document_titles.discard(title)
             except Exception:
@@ -251,15 +404,24 @@ class SolidWorksExecutor:
         part_template = self.settings.part_template
         return {
             "ok": True,
+            "version": __version__,
+            "document_binding_required": True,
+            "runtime_reload_enabled": False,
             "platform": "Windows required",
             "part_template": str(part_template),
             "part_template_exists": part_template.exists(),
             "state_version": self.session.state_version,
-            "operation_timeout_seconds": getattr(self.settings, "operation_timeout_seconds", 180.0),
+            "operation_timeout_seconds": getattr(
+                self.settings, "operation_timeout_seconds", 180.0
+            ),
             "interactive_mode": getattr(self.settings, "interactive_mode", True),
-            "single_document_mode": getattr(self.settings, "single_document_mode", False),
+            "single_document_mode": getattr(
+                self.settings, "single_document_mode", False
+            ),
             "verify_feature_tree": getattr(self.settings, "verify_feature_tree", False),
-            "redraw_after_operation": getattr(self.settings, "redraw_after_operation", False),
+            "redraw_after_operation": getattr(
+                self.settings, "redraw_after_operation", False
+            ),
             "executor_status": self.session.status(),
             "architecture": "MCP adapter -> validated operations -> serialized STA COM executor",
         }
@@ -270,6 +432,7 @@ class SolidWorksExecutor:
     def connect(self, start_if_missing: bool = False) -> dict[str, Any]:
         return self.session.connect(self.settings.visible, start_if_missing)
 
+    @request_operation
     def list_documents(self, request_id: str) -> dict[str, Any]:
         def action(app: Any) -> dict[str, Any]:
             active = self._active_model(app)
@@ -277,8 +440,10 @@ class SolidWorksExecutor:
                 "operation": "list_documents",
                 **inspect_documents(self._open_documents(app), active),
             }
+
         return self.session.execute(request_id, action)
 
+    @request_operation
     def activate_document(self, request_id: str, title: str) -> dict[str, Any]:
         title = require_text(title, "title")
 
@@ -286,24 +451,38 @@ class SolidWorksExecutor:
             result = activate_open_document(app, title, self._open_documents(app))
             self._active_document = getattr(app, "ActiveDoc", None)
             return result
+
         return self.session.execute(request_id, action)
 
-    def get_bounding_box(self, request_id: str, include_hidden: bool = True) -> dict[str, Any]:
+    @request_operation
+    def get_bounding_box(
+        self, request_id: str, include_hidden: bool = True
+    ) -> dict[str, Any]:
         def action(app: Any) -> dict[str, Any]:
             model = self._active_model(app)
             if model is None:
                 raise ContractError("No active SolidWorks document")
-            return {"operation": "get_bounding_box", **inspect_bounding_box(model, include_hidden)}
+            return {
+                "operation": "get_bounding_box",
+                **inspect_bounding_box(model, include_hidden),
+            }
+
         return self.session.execute(request_id, action)
 
+    @request_operation
     def get_mass_properties(self, request_id: str) -> dict[str, Any]:
         def action(app: Any) -> dict[str, Any]:
             model = self._active_model(app)
             if model is None:
                 raise ContractError("No active SolidWorks document")
-            return {"operation": "get_mass_properties", **inspect_mass_properties(model)}
+            return {
+                "operation": "get_mass_properties",
+                **inspect_mass_properties(model),
+            }
+
         return self.session.execute(request_id, action)
 
+    @request_operation
     def rebuild_diagnostics(
         self,
         request_id: str,
@@ -319,8 +498,10 @@ class SolidWorksExecutor:
                 perform_rebuild=perform_rebuild,
                 full_rebuild=full_rebuild,
             )
+
         return self.session.execute(request_id, action)
 
+    @request_operation
     def capture_view(
         self,
         request_id: str,
@@ -342,24 +523,30 @@ class SolidWorksExecutor:
                 fit_view=fit_view,
                 overwrite=overwrite,
             )
+
         return self.session.execute(request_id, action)
 
+    @request_operation
     def list_configurations(self, request_id: str) -> dict[str, Any]:
         def action(app: Any) -> dict[str, Any]:
             model = self._active_model(app)
             if model is None:
                 raise ContractError("No active SolidWorks document")
             return {"operation": "list_configurations", **inspect_configurations(model)}
+
         return self.session.execute(request_id, action)
 
-    def activate_configuration(self, request_id: str, configuration_name: str) -> dict[str, Any]:
-        def action(app: Any) -> dict[str, Any]:
-            model = self._active_model(app)
-            if model is None:
-                raise ContractError("No active SolidWorks document")
-            return activate_model_configuration(model, configuration_name)
-        return self.session.execute(request_id, action)
+    @request_operation
+    def activate_configuration(
+        self, request_id: str, configuration_name: str
+    ) -> dict[str, Any]:
+        return self._execute_on_active(
+            request_id,
+            "activate_configuration",
+            lambda model: activate_model_configuration(model, configuration_name),
+        )
 
+    @request_operation
     def create_configuration(
         self,
         request_id: str,
@@ -368,19 +555,19 @@ class SolidWorksExecutor:
         alternate_name: str = "",
         activate: bool = True,
     ) -> dict[str, Any]:
-        def action(app: Any) -> dict[str, Any]:
-            model = self._active_model(app)
-            if model is None:
-                raise ContractError("No active SolidWorks document")
-            return create_model_configuration(
+        return self._execute_on_active(
+            request_id,
+            "create_configuration",
+            lambda model: create_model_configuration(
                 model,
                 configuration_name,
                 comment=comment,
                 alternate_name=alternate_name,
                 activate=activate,
-            )
-        return self.session.execute(request_id, action)
+            ),
+        )
 
+    @request_operation
     def get_custom_properties(
         self,
         request_id: str,
@@ -394,26 +581,35 @@ class SolidWorksExecutor:
                 "operation": "get_custom_properties",
                 **inspect_custom_properties(model, configuration_name),
             }
+
         return self.session.execute(request_id, action)
 
+    @request_operation
     def set_custom_properties(
         self,
         request_id: str,
         properties: dict[str, Any],
         configuration_name: str | None = None,
     ) -> dict[str, Any]:
-        def action(app: Any) -> dict[str, Any]:
-            model = self._active_model(app)
-            if model is None:
-                raise ContractError("No active SolidWorks document")
-            return write_custom_properties(model, properties, configuration_name)
-        return self.session.execute(request_id, action)
+        return self._execute_on_active(
+            request_id,
+            "set_custom_properties",
+            lambda model: write_custom_properties(
+                model, properties, configuration_name
+            ),
+        )
 
+    @request_operation
     def list_material_databases(self, request_id: str) -> dict[str, Any]:
         def action(app: Any) -> dict[str, Any]:
-            return {"operation": "list_material_databases", **inspect_material_databases(app)}
+            return {
+                "operation": "list_material_databases",
+                **inspect_material_databases(app),
+            }
+
         return self.session.execute(request_id, action)
 
+    @request_operation
     def get_material(
         self,
         request_id: str,
@@ -423,9 +619,14 @@ class SolidWorksExecutor:
             model = self._active_model(app)
             if model is None:
                 raise ContractError("No active SolidWorks document")
-            return {"operation": "get_material", **inspect_model_material(model, configuration_name)}
+            return {
+                "operation": "get_material",
+                **inspect_model_material(model, configuration_name),
+            }
+
         return self.session.execute(request_id, action)
 
+    @request_operation
     def assign_material(
         self,
         request_id: str,
@@ -434,19 +635,15 @@ class SolidWorksExecutor:
         configuration_name: str | None = None,
         rebuild: bool = True,
     ) -> dict[str, Any]:
-        def action(app: Any) -> dict[str, Any]:
-            model = self._active_model(app)
-            if model is None:
-                raise ContractError("No active SolidWorks document")
-            return assign_model_material(
-                model,
-                database_path,
-                material_name,
-                configuration_name,
-                rebuild=rebuild,
-            )
-        return self.session.execute(request_id, action)
+        return self._execute_on_active(
+            request_id,
+            "assign_material",
+            lambda model: assign_model_material(
+                model, database_path, material_name, configuration_name, rebuild=rebuild
+            ),
+        )
 
+    @request_operation
     def new_part(self, request_id: str, title: str = "Part") -> dict[str, Any]:
         title = require_text(title, "title")
         template = self.settings.part_template
@@ -457,7 +654,7 @@ class SolidWorksExecutor:
             # NewDocument(template, paper_size, width, height) is more reliable than NewPart().
             closed_previous = (
                 self._prepare_single_document_test(app)
-                if getattr(self.settings, "single_document_mode", False)
+                if self.settings.single_document_mode
                 else []
             )
             model = self._new_part_document(app)
@@ -467,12 +664,17 @@ class SolidWorksExecutor:
                 "ok": True,
                 "document_title": str(_com_value(model, "GetTitle")),
                 "requested_title": title,
+                **self._bind_model(model),
                 "operation": "new_part",
-                "single_document_test_mode": getattr(self.settings, "single_document_mode", False),
+                "single_document_test_mode": getattr(
+                    self.settings, "single_document_mode", False
+                ),
                 "closed_previous_documents": closed_previous,
             }
+
         return self.session.execute(request_id, action)
 
+    @request_operation
     def execute_feature_graph(
         self,
         request_id: str,
@@ -480,13 +682,22 @@ class SolidWorksExecutor:
         output_path: str,
     ) -> dict[str, Any]:
         plan = compile_feature_graph(feature_graph)
+        planning_review = review_feature_graph(feature_graph,plan)
         target = Path(require_text(output_path, "output_path")).expanduser().resolve()
         if target.suffix.lower() != ".sldprt":
             raise ContractError("output_path must end in .sldprt")
 
         def action(app: Any) -> dict[str, Any]:
-            strict_single_document = getattr(self.settings, "single_document_mode", False)
-            closed_previous = self._prepare_single_document_test(app) if strict_single_document else []
+            if target.exists():
+                raise ContractError(f"Output already exists: {target}")
+            strict_single_document = getattr(
+                self.settings, "single_document_mode", False
+            )
+            closed_previous = (
+                self._prepare_single_document_test(app)
+                if strict_single_document
+                else []
+            )
             model = self._new_part_document(app)
             try:
                 steps = execute_plan(
@@ -494,37 +705,57 @@ class SolidWorksExecutor:
                     plan,
                     full_rebuild=not getattr(self.settings, "interactive_mode", True),
                     redraw=getattr(self.settings, "redraw_after_operation", False),
+                    before_step=lambda: self._require_active_instance(app, model),
+                    application=app,
+                )
+                verification = verify_model(
+                    model,
+                    [step["name"] for step in plan[1:]],
+                    analytic_volume(feature_graph.get("metadata", {})),
                 )
                 target.parent.mkdir(parents=True, exist_ok=True)
                 try:
+                    self._require_active_instance(app, model)
                     ok, errors, warnings = _save_as(model, target)
                 except Exception as exc:
-                    raise RuntimeError(f"Native SaveAs call failed: {type(exc).__name__}: {exc}") from exc
+                    raise RuntimeError(
+                        f"Native SaveAs call failed: {type(exc).__name__}: {exc}"
+                    ) from exc
                 if not ok:
                     raise RuntimeError(
                         f"SolidWorks SaveAs failed after feature execution "
                         f"(errors={errors}, warnings={warnings})"
                     )
                 if not target.exists() or target.stat().st_size <= 0:
-                    raise RuntimeError(f"SolidWorks reported success but output is missing: {target}")
-                verify_tree = getattr(self.settings, "verify_feature_tree", False)
-                tree = feature_names(model) if verify_tree else []
+                    raise RuntimeError(
+                        f"SolidWorks reported success but output is missing: {target}"
+                    )
+                verify_tree = True
+                tree = verification["features"]
                 if verify_tree:
                     missing = [
-                        step["name"] for step in plan[1:]
+                        step["name"]
+                        for step in plan[1:]
                         if step["name"] not in {item["name"] for item in tree}
                     ]
                     if missing:
-                        raise RuntimeError(f"Native feature tree is missing expected features: {missing}")
+                        raise RuntimeError(
+                            f"Native feature tree is missing expected features: {missing}"
+                        )
                 return {
                     "ok": True,
                     "operation": "execute_feature_graph",
+                    "planning_review": planning_review,
                     "path": str(target),
                     "bytes": target.stat().st_size,
                     "warnings": warnings,
                     "steps": steps,
-                    "features": tree if verify_tree else [step["name"] for step in plan[1:]],
+                    "features": tree
+                    if verify_tree
+                    else [step["name"] for step in plan[1:]],
                     "feature_tree_verified": verify_tree,
+                    "verification": verification,
+                    **self._bind_model(model),
                     "metadata": feature_graph.get("metadata", {}),
                     "single_document_test_mode": strict_single_document,
                     "closed_previous_documents": closed_previous,
@@ -545,9 +776,65 @@ class SolidWorksExecutor:
             model = self._active_model(app)
             if model is None:
                 raise RuntimeError("No active SolidWorks document")
-            return {"operation": operation, **action(model)}
+            context = request_context.get()
+            geometry_edit = operation in {
+                "set_dimension",
+                "set_feature_parameter",
+                "edit_sketch",
+                "delete_feature",
+                "add_edge_feature",
+                "add_stepped_shaft_with_keyway",
+            }
+            recording = False
+            if geometry_edit:
+                # StartRecordingUndoObject is void, unlike FinishRecordingUndoObject2.
+                _com_value(model.Extension, "StartRecordingUndoObject")
+                recording = True
+            try:
+                result = action(model)
+                self._require_active_instance(app, model)
+                if geometry_edit:
+                    if not _com_value(
+                        model.Extension,
+                        "FinishRecordingUndoObject2",
+                        "SolidWorks MCP edit",
+                        False,
+                    ):
+                        raise SafetyError(
+                            "UNDO_INCOMPLETE", "Cannot finalize undo group"
+                        )
+                    recording = False
+                # Refresh path/configuration after an intentional change, keeping
+                # the per-call token stable until the next explicit binding.
+                if context and context["mutating"]:
+                    self._bound_identity = self._identity(model)
+                return {"operation": operation, **result}
+            except Exception as exc:
+                if context and context["mutating"]:
+                    self._recovery_required = True
+                if recording:
+                    try:
+                        _com_value(
+                            model.Extension,
+                            "FinishRecordingUndoObject2",
+                            "Failed MCP edit - inspect before undo",
+                            False,
+                        )
+                    except Exception:
+                        pass
+                # Never blindly undo: an empty/unsupported group could undo the
+                # user's preceding edit. Preserve it for explicit recovery.
+                raise SafetyError(
+                    "MUTATION_FAILED",
+                    str(exc),
+                    partial_changes_possible=True,
+                    automatic_retry=False,
+                    recovery_required=True,
+                ) from exc
+
         return self.session.execute(request_id, run)
 
+    @request_operation
     def set_dimension(
         self,
         request_id: str,
@@ -572,6 +859,7 @@ class SolidWorksExecutor:
             ),
         )
 
+    @request_operation
     def set_feature_parameter(
         self,
         request_id: str,
@@ -590,6 +878,7 @@ class SolidWorksExecutor:
             ),
         )
 
+    @request_operation
     def edit_sketch(
         self,
         request_id: str,
@@ -604,6 +893,7 @@ class SolidWorksExecutor:
             lambda model: edit_sketch(model, sketch_name, entities, mode, rebuild),
         )
 
+    @request_operation
     def delete_feature(
         self,
         request_id: str,
@@ -624,6 +914,7 @@ class SolidWorksExecutor:
             ),
         )
 
+    @request_operation
     def rollback(
         self,
         request_id: str,
@@ -636,6 +927,7 @@ class SolidWorksExecutor:
             lambda model: rollback(model, location, feature_name),
         )
 
+    @request_operation
     def inspect_relations(
         self,
         request_id: str,
@@ -654,6 +946,7 @@ class SolidWorksExecutor:
             ),
         )
 
+    @request_operation
     def select_references(
         self,
         request_id: str,
@@ -665,6 +958,7 @@ class SolidWorksExecutor:
             lambda model: select_references(model, reference_tokens),
         )
 
+    @request_operation
     def add_edge_feature(
         self,
         request_id: str,
@@ -689,6 +983,7 @@ class SolidWorksExecutor:
             ),
         )
 
+    @request_operation
     def add_stepped_shaft_with_keyway(
         self,
         request_id: str,
@@ -700,6 +995,7 @@ class SolidWorksExecutor:
             lambda model: add_stepped_shaft_with_keyway(model, **parameters),
         )
 
+    @request_operation
     def create_parametric_part(
         self,
         request_id: str,
@@ -710,6 +1006,7 @@ class SolidWorksExecutor:
         graph = build_parametric_part_graph(part_type, parameters)
         return self.execute_feature_graph(request_id, graph, output_path)
 
+    @request_operation
     def create_involute_spur_gear(
         self,
         request_id: str,
@@ -740,6 +1037,7 @@ class SolidWorksExecutor:
         )
         return result
 
+    @request_operation
     def create_two_stage_reducer(
         self,
         request_id: str,
@@ -749,6 +1047,7 @@ class SolidWorksExecutor:
         graph = build_two_stage_reducer_graph(**parameters)
         return self.execute_feature_graph(request_id, graph, output_path)
 
+    @request_operation
     def create_output_shaft_from_dwg(
         self,
         request_id: str,
@@ -760,6 +1059,7 @@ class SolidWorksExecutor:
             output_path,
         )
 
+    @request_operation
     def create_sphere(
         self,
         request_id: str,
@@ -769,21 +1069,31 @@ class SolidWorksExecutor:
         graph = build_sphere_graph(diameter_mm)
         return self.execute_feature_graph(request_id, graph, output_path)
 
+    @request_operation
     def open_document(self, request_id: str, path: str) -> dict[str, Any]:
         source = Path(require_text(path, "path")).expanduser().resolve()
         if not source.is_file():
             raise ContractError(f"document does not exist: {source}")
         # SolidWorks imports STEP as a part document; after import it can be
         # persisted as native .sldprt through save_active().
-        doc_type = {".sldprt": 1, ".sldasm": 2, ".slddrw": 3, ".step": 1, ".stp": 1}.get(source.suffix.lower())
+        doc_type = {
+            ".sldprt": 1,
+            ".sldasm": 2,
+            ".slddrw": 3,
+            ".step": 1,
+            ".stp": 1,
+        }.get(source.suffix.lower())
         if doc_type is None:
-            raise ContractError("path must end in .sldprt, .sldasm, .slddrw, .step, or .stp")
+            raise ContractError(
+                "path must end in .sldprt, .sldasm, .slddrw, .step, or .stp"
+            )
 
         def action(app: Any) -> dict[str, Any]:
             # Errors/warnings are by-ref I4 values; integer placeholders produce
             # a type-mismatch error under the pywin32 binding on this host.
             import pythoncom  # type: ignore
             from win32com.client import VARIANT  # type: ignore
+
             errors = VARIANT(pythoncom.VT_BYREF | pythoncom.VT_I4, 0)
             warnings = VARIANT(pythoncom.VT_BYREF | pythoncom.VT_I4, 0)
             if source.suffix.lower() in {".step", ".stp"}:
@@ -792,49 +1102,108 @@ class SolidWorksExecutor:
                 # from blocking the headless stdio MCP session.
                 import_data = app.GetImportFileData(str(source))
                 if import_data is None:
-                    raise RuntimeError(f"SolidWorks could not create STEP import settings: {source}")
+                    raise RuntimeError(
+                        f"SolidWorks could not create STEP import settings: {source}"
+                    )
                 model = app.LoadFile4(str(source), "r", import_data, errors)
             else:
                 model = app.OpenDoc6(str(source), doc_type, 1, "", errors, warnings)
             if model is None:
                 raise RuntimeError(f"SolidWorks failed to load: {source}")
             self._active_document = model
-            return {"ok": True, "document_title": str(_com_value(model, "GetTitle")), "path": str(source), "operation": "open_document"}
+            binding = self._bind_model(model)
+            return {
+                **binding,
+                "ok": True,
+                "document_title": str(_com_value(model, "GetTitle")),
+                "path": str(source),
+                "operation": "open_document",
+            }
+
         return self.session.execute(request_id, action)
 
-    def save_active(self, request_id: str, path: str | None = None) -> dict[str, Any]:
+    @request_operation
+    def save_active(
+        self, request_id: str, path: str | None = None, overwrite: bool = False
+    ) -> dict[str, Any]:
         target = Path(path).expanduser().resolve() if path else None
+
         def action(app: Any) -> dict[str, Any]:
             model = self._active_model(app)
             if model is None:
                 raise RuntimeError("No active SolidWorks document")
             actual_target = target or Path(str(_com_value(model, "GetPathName")))
-            if not actual_target.name:
+            if not path and not str(_com_value(model, "GetPathName")):
                 raise ContractError("path is required when saving an unsaved document")
             actual_target.parent.mkdir(parents=True, exist_ok=True)
-            ok, errors, warnings = _save_as(model, actual_target)
+            if actual_target.suffix.lower() not in _NATIVE_DOCUMENT_EXTENSIONS:
+                raise ContractError(
+                    "save_active requires a native SolidWorks extension"
+                )
+            expected_suffix = {1: ".sldprt", 2: ".sldasm", 3: ".slddrw"}[
+                int(_com_value(model, "GetType"))
+            ]
+            if actual_target.suffix.lower() != expected_suffix:
+                raise ContractError(
+                    "Native output extension does not match the active document type"
+                )
+            verification = verify_model(model)
+            self._active_model(app)  # Recheck after the multi-call verification.
+            ok, errors, warnings = _save_as(model, actual_target, overwrite)
+            self._bound_identity = self._identity(model)
             if not ok:
-                raise RuntimeError(f"SolidWorks SaveAs failed (errors={errors}, warnings={warnings})")
+                raise RuntimeError(
+                    f"SolidWorks SaveAs failed (errors={errors}, warnings={warnings})"
+                )
             if not actual_target.exists():
-                raise RuntimeError(f"SolidWorks SaveAs reported success but file is missing: {actual_target}")
-            return {"ok": True, "path": str(actual_target), "bytes": actual_target.stat().st_size, "warnings": warnings, "operation": "save"}
+                raise RuntimeError(
+                    f"SolidWorks SaveAs reported success but file is missing: {actual_target}"
+                )
+            return {
+                "ok": True,
+                "path": str(actual_target),
+                "bytes": actual_target.stat().st_size,
+                "warnings": warnings,
+                "operation": "save",
+                "verification": verification,
+            }
+
         return self.session.execute(request_id, action)
 
-    def export_active(self, request_id: str, path: str) -> dict[str, Any]:
+    @request_operation
+    def export_active(
+        self, request_id: str, path: str, overwrite: bool = False
+    ) -> dict[str, Any]:
         target = Path(require_text(path, "path")).expanduser().resolve()
         if target.suffix.lower() not in _EXPORT_TYPES:
-            raise ContractError("export extension must be STEP/STP/IGES/IGS/STL/PDF/DXF/DWG")
+            raise ContractError(
+                "export extension must be STEP/STP/IGES/IGS/STL/PDF/DXF/DWG"
+            )
+
         def action(app: Any) -> dict[str, Any]:
             model = self._active_model(app)
             if model is None:
                 raise RuntimeError("No active SolidWorks document")
             target.parent.mkdir(parents=True, exist_ok=True)
-            ok, errors, warnings = _save_as(model, target)
+            verification = verify_model(model)
+            self._active_model(app)
+            ok, errors, warnings = _save_as(model, target, overwrite)
             if not ok or not target.exists():
-                raise RuntimeError(f"SolidWorks export failed (errors={errors}, warnings={warnings}): {target}")
-            return {"ok": True, "path": str(target), "bytes": target.stat().st_size, "warnings": warnings, "operation": "export"}
+                raise RuntimeError(
+                    f"SolidWorks export failed (errors={errors}, warnings={warnings}): {target}"
+                )
+            return {
+                "ok": True,
+                "path": str(target),
+                "bytes": target.stat().st_size,
+                "warnings": warnings,
+                "operation": "export",
+                "verification": verification,
+            }
+
         return self.session.execute(request_id, action)
 
+    @request_operation
     def create_spur_gear(
         self,
         request_id: str,
@@ -844,96 +1213,14 @@ class SolidWorksExecutor:
         thickness_mm: float = 10.0,
         bore_diameter_mm: float = 10.0,
     ) -> dict[str, Any]:
-        """Create and save a robust straight-tooth *approximate* spur gear.
+        raise ContractError(
+            "Conceptual non-involute gear execution is retired; use create_involute_spur_gear"
+        )
 
-        The outline is deliberately generated as a closed, four-segment tooth
-        profile rather than pretending to generate an involute. It is suitable
-        for visualisation, fixtures and concept models; a transmission-ready
-        involute profile needs a separately verified gear standard/compiler.
-        """
-        if not isinstance(tooth_count, int) or isinstance(tooth_count, bool) or not 8 <= tooth_count <= 160:
-            raise ContractError("tooth_count must be an integer from 8 to 160")
-        module_mm = require_positive(module_mm, "module_mm")
-        thickness_mm = require_positive(thickness_mm, "thickness_mm")
-        bore_diameter_mm = require_positive(bore_diameter_mm, "bore_diameter_mm")
-        root_radius_mm = module_mm * (tooth_count - 2.5) / 2.0
-        outer_radius_mm = module_mm * (tooth_count + 2.0) / 2.0
-        if bore_diameter_mm / 2 >= root_radius_mm - 0.25:
-            raise ContractError("bore_diameter_mm is too large for the requested tooth count/module")
-        target = Path(require_text(output_path, "output_path")).expanduser().resolve()
-        if target.suffix.lower() != ".sldprt":
-            raise ContractError("output_path must end in .sldprt")
-        template = self.settings.part_template
-        if not template.exists():
-            raise ContractError(f"SolidWorks part template does not exist: {template}")
-
-        def action(app: Any) -> dict[str, Any]:
-            strict_single_document = getattr(self.settings, "single_document_mode", False)
-            closed_previous = self._prepare_single_document_test(app) if strict_single_document else []
-            model = self._new_part_document(app)
-            extension = model.Extension
-            if not extension.SelectByID2("Front Plane", "PLANE", 0, 0, 0, False, 0, None, 0):
-                # The fallback covers Chinese-localized default template names.
-                if not extension.SelectByID2("前视基准面", "PLANE", 0, 0, 0, False, 0, None, 0):
-                    raise RuntimeError("Could not select Front Plane for gear sketch")
-            model.InsertSketch2(True)
-            sketch = model.SketchManager
-            step = 2.0 * math.pi / tooth_count
-            tooth_half = step * 0.20
-            root_m, outer_m = root_radius_mm / 1000.0, outer_radius_mm / 1000.0
-            points: list[tuple[float, float]] = [(root_m * math.cos(-step / 2), root_m * math.sin(-step / 2))]
-            for index in range(tooth_count):
-                center = index * step
-                points.extend([
-                    (outer_m * math.cos(center - tooth_half), outer_m * math.sin(center - tooth_half)),
-                    (outer_m * math.cos(center + tooth_half), outer_m * math.sin(center + tooth_half)),
-                    (root_m * math.cos(center + step / 2), root_m * math.sin(center + step / 2)),
-                ])
-            for start, end in zip(points, points[1:] + [points[0]]):
-                sketch.CreateLine(start[0], start[1], 0.0, end[0], end[1], 0.0)
-            bore_m = bore_diameter_mm / 2000.0
-            sketch.CreateCircle(0.0, 0.0, 0.0, bore_m, 0.0, 0.0)
-            model.InsertSketch2(True)
-            feature = model.FeatureManager.FeatureExtrusion2(
-                True, False, False, 0, 0, thickness_mm / 1000.0, thickness_mm / 1000.0,
-                False, False, False, False, 0.0, 0.0, False, False, False, False,
-                True, True, True, 0, 0.0, False,
-            )
-            if feature is None:
-                raise RuntimeError("Gear extrusion failed; no solid feature was created")
-            try:
-                if getattr(self.settings, "interactive_mode", True):
-                    _com_value(model, "EditRebuild3")
-                else:
-                    _com_value(model, "ForceRebuild3", False)
-                if getattr(self.settings, "redraw_after_operation", False):
-                    _com_value(model, "ViewZoomtofit2")
-            except Exception:
-                pass
-            target.parent.mkdir(parents=True, exist_ok=True)
-            ok, errors, warnings = _save_as(model, target)
-            if not ok or not target.exists():
-                raise RuntimeError(
-                    f"SolidWorks could not save gear (errors={errors}, warnings={warnings}): {target}"
-                )
-            return {
-                "ok": True,
-                "operation": "create_spur_gear",
-                "path": str(target),
-                "bytes": target.stat().st_size,
-                "tooth_count": tooth_count,
-                "module_mm": module_mm,
-                "thickness_mm": thickness_mm,
-                "bore_diameter_mm": bore_diameter_mm,
-                "pitch_diameter_mm": module_mm * tooth_count,
-                "outer_diameter_mm": 2.0 * outer_radius_mm,
-                "profile": "straight-sided conceptual spur gear (not involute-certified)",
-                "single_document_test_mode": strict_single_document,
-                "closed_previous_documents": closed_previous,
-            }
-        return self.session.execute(request_id, action)
-
-    def inspect_active(self, request_id: str, include_features: bool = False) -> dict[str, Any]:
+    @request_operation
+    def inspect_active(
+        self, request_id: str, include_features: bool = False
+    ) -> dict[str, Any]:
         def action(app: Any) -> dict[str, Any]:
             try:
                 open_document_count = int(_com_value(app, "GetDocumentCount"))
@@ -964,5 +1251,13 @@ class SolidWorksExecutor:
             # enough for the default verification gate and remains fast/reliable.
             if include_features:
                 result["features"] = feature_names(model)
+            if self._document_token and self._bound_model is not None:
+                if getattr(model, "_oleobj_", model) == getattr(
+                    self._bound_model, "_oleobj_", self._bound_model
+                ):
+                    if self._identity(model) == self._bound_identity:
+                        result["document_token"] = self._document_token
+            result["recovery_required"] = self._recovery_required
             return result
+
         return self.session.execute(request_id, action)

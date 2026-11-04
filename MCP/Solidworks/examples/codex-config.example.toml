@@ -1,0 +1,27 @@
+# Replace every angle-bracket placeholder. Merge only these tables; retain existing settings.
+[mcp_servers.solidworks-agent]
+command = "<absolute-python-executable>"
+args = ["-X", "utf8", "-m", "solidworks_mcp.server"]
+cwd = "<checkout>/MCP/Solidworks"
+enabled = true
+startup_timeout_sec = 30
+tool_timeout_sec = 210
+disabled_tools = ["solidworks_reload_runtime", "solidworks_create_spur_gear"]
+[mcp_servers.solidworks-agent.env]
+SOLIDWORKS_FEATURE_LANGUAGE = "zh-CN"
+SOLIDWORKS_PART_TEMPLATE = "<installed-part-template.prtdot>"
+SOLIDWORKS_ASSEMBLY_TEMPLATE = "<installed-assembly-template.asmdot>"
+SOLIDWORKS_SINGLE_DOCUMENT_MODE = "false"
+TEMP = "<existing-writable-temp-directory>"
+TMP = "<existing-writable-temp-directory>"
+[mcp_servers.solidworks-drawing]
+command = "<absolute-python-with-mcp-and-PyMuPDF>"
+args = ["-X", "utf8", "<checkout>/MCP/DrawingModeling/server.py"]
+cwd = "<checkout>/MCP/DrawingModeling"
+enabled = true
+startup_timeout_sec = 30
+tool_timeout_sec = 300
+[mcp_servers.solidworks-drawing.env]
+SOLIDWORKS_FEATURE_LANGUAGE = "zh-CN"
+TEMP = "<existing-writable-temp-directory>"
+TMP = "<existing-writable-temp-directory>"

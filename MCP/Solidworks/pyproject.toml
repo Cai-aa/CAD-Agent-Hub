@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "solidworks-agent-mcp"
-version = "0.4.0"
+version = "0.6.0"
 description = "A layered, stateful MCP server for SolidWorks automation"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 dependencies = [
-  "mcp>=1.7,<3",
+  "mcp>=1.27.1,<2",
   "pywin32>=305; platform_system == 'Windows'",
 ]
 

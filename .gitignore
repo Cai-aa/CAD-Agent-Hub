@@ -63,3 +63,14 @@ MCP/EPLAN/**/*.elk
 MCP/EPLAN/**/*.edb/
 MCP/EPLAN/**/*.zw1
 MCP/EPLAN/**/*.sqlite3
+
+# Native CAD/customer files remain local
+*.sldprt
+*.sldasm
+*.slddrw
+*.SLDPRT
+*.SLDASM
+*.SLDDRW
+*.step
+*.stp
+*.sqlite3

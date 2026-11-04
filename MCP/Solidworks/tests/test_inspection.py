@@ -70,7 +70,7 @@ class FakeExtension:
 
 class FakePart(FakeDocument):
     def __init__(self) -> None:
-        super().__init__(path=r"E:\parts\sample.sldprt")
+        super().__init__(path=r"E:/parts/sample.sldprt")
         self.Extension = FakeExtension()
         self.rebuild_count = 0
         self.full_rebuild_count = 0
@@ -130,7 +130,7 @@ class FakeLegacyPart(FakePart):
 
 class InspectionTests(unittest.TestCase):
     def test_lists_documents_and_marks_active_title(self) -> None:
-        first = FakeDocument("Part1", path=r"E:\parts\one.sldprt")
+        first = FakeDocument("Part1", path=r"E:/parts/one.sldprt")
         second = FakeDocument("Assembly1", document_type=2, dirty=True)
         result = list_documents([first, second], second)
 

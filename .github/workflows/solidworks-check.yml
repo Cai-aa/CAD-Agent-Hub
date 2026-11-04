@@ -1,0 +1,25 @@
+name: solidworks-offline-check
+on:
+  push:
+    paths: ['MCP/Solidworks/**', 'MCP/DrawingModeling/**', 'skills/solidworks-*/**', '.github/workflows/solidworks-check.yml']
+  pull_request:
+    paths: ['MCP/Solidworks/**', 'MCP/DrawingModeling/**', 'skills/solidworks-*/**', '.github/workflows/solidworks-check.yml']
+permissions:
+  contents: read
+jobs:
+  offline:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      PYTHONUTF8: '1'
+      PYTHONPATH: MCP/Solidworks/src
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -e ./MCP/Solidworks -r ./MCP/DrawingModeling/requirements.txt
+      - run: python -m unittest discover -s MCP/Solidworks/tests -q
+      - run: python -m unittest discover -s MCP/DrawingModeling/tests -q

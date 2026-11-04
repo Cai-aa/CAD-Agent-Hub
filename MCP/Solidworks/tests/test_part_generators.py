@@ -4,9 +4,18 @@ import unittest
 
 from solidworks_mcp.feature_graph import compile_feature_graph
 from solidworks_mcp.part_generators import build_parametric_part_graph
+from solidworks_mcp.contracts import ContractError
 
 
 class PartGeneratorTests(unittest.TestCase):
+    def test_flange_rejects_holes_intersecting_central_bore(self):
+        with self.assertRaisesRegex(ContractError, "central bore"):
+            build_parametric_part_graph("flange", {"bore_diameter_mm": 80, "bolt_hole_diameter_mm": 20})
+
+    def test_flange_rejects_overlapping_adjacent_holes(self):
+        with self.assertRaisesRegex(ContractError, "adjacent"):
+            build_parametric_part_graph("flange", {"bolt_count": 100})
+
     def test_all_common_part_generators_compile(self) -> None:
         cases = {
             "block": {"length_mm": 80, "width_mm": 40, "height_mm": 12},
